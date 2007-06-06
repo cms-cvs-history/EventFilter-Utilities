@@ -1,8 +1,8 @@
-2007-04-16  Emilio Meschi <emilio.meschi@cern.ch>
+2007-05-10  Emilio Meschi  <emilio.meschi@cern.ch>
 
-	* tag V00-13-00
-	* use new plugin manager. Moved module definitions to plugin directory
-	NOTA BENE: these changes are incompatible with the 14 series
+	* tag V00-12-05
+	* fix of MicroStateService to avoid synchronization problems with monitoring
+	workloop
 
 2007-03-21  Philipp SCHIEFERDECKER  <philipp.schieferdecker@cern.ch>
 
