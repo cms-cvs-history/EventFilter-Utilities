@@ -1,3 +1,9 @@
+2008-10-17  Emilio Meschi <emilio.meschi@cern.ch>
+
+	* tag V00-14-16-01
+	* mods to ModuleWeb/ModuleWebRegistry to support timeout
+	* mods to GlobalEventNumbers to extract info from gtpe
+	
 2008-10-09  Philipp SCHIEFERDECKER  <philipp.schieferdecker@cern.ch>
 
 	* tag V00-14-16
