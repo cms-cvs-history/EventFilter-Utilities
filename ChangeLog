@@ -1,13 +1,9 @@
-2008-10-14  Philipp SCHIEFERDECKER  <philipp.schieferdecker@cern.ch>
+2008-10-17  Emilio Meschi <emilio.meschi@cern.ch>
 
-	* tag V00-15-00
-	* add Kurt's changes regarding the communication with the storage
-	manager
-	* fuID renamed to rbBufferID
-	* added fuProcId and fuGUID
-	* add format version number and lumiNumber (placeholder for now)
-	to the error stream data format (and thus source)
-
+	* tag V00-14-16-01
+	* mods to ModuleWeb/ModuleWebRegistry to support timeout
+	* mods to GlobalEventNumbers to extract info from gtpe
+	
 2008-10-09  Philipp SCHIEFERDECKER  <philipp.schieferdecker@cern.ch>
 
 	* tag V00-14-16
