@@ -1,6 +1,0 @@
-<use   name="EventFilter/Utilities"/>
-<use name="qt"/> 
-<bin   name="dumpMsgQueues" file="dumpMsgQueues.cc">
-</bin>
-<bin   name="minidaq" file="minidaq.cc">
-</bin>
