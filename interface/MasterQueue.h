@@ -16,8 +16,6 @@
 #include "EventFilter/Utilities/interface/Exception.h"
 #include "EventFilter/Utilities/interface/MsgBuf.h"
 
-using std::vector;
-
 namespace evf {
 
 class MasterQueue {
@@ -40,7 +38,7 @@ public:
 	pid_t pidOfLastSend() const;
 	pid_t pidOfLastReceive() const;
 
-	vector<int> getReceivers() const { return receivers_; }
+	std::vector<int> getReceivers() const { return receivers_; }
 
 private:
 
@@ -53,7 +51,7 @@ private:
 	int occup_;
 	int pidOfLastSend_;
 	int pidOfLastReceive_;
-	vector<int> receivers_;
+	std::vector<int> receivers_;
 };
 }
 #endif
