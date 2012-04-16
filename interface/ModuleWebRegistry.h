@@ -22,9 +22,12 @@ namespace xdaq{
 
 namespace evf
 {
+  namespace moduleweb {
+    class ForkInfoObj;
+  }
   class ModuleWeb;
   class ModuleWebRegistry
-    {
+  {
     public:
       ModuleWebRegistry(const edm::ParameterSet &);
 
@@ -38,6 +41,7 @@ namespace evf
       void publish(xdata::InfoSpace *);
       void publishToXmas(xdata::InfoSpace *);
       bool checkWeb(const std::string &);
+      void publishForkInfo(std::string name, moduleweb::ForkInfoObj *forkInfoObj);
 
     private:
       typedef std::map<std::string, ModuleWeb*> dct;

@@ -56,6 +56,16 @@ void ModuleWebRegistry::closeBackDoor(const std::string &name)
     }
 }
 
+void ModuleWebRegistry::publishForkInfo(std::string name, moduleweb::ForkInfoObj * forkInfoObj)
+{
+    idct i = clm_.find(name);
+    if(i != clm_.end())
+    {
+	(*i).second->publishForkInfo(forkInfoObj);
+    }
+
+}
+
 void ModuleWebRegistry::publish(xdata::InfoSpace *is)
 {
     idct i = clm_.begin();
