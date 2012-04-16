@@ -29,21 +29,14 @@ namespace moduleweb {
     public:
       ForkInfoObj()
       {
-	control_sem2_ = new sem_t;
-	sem_init(control_sem2_,0,0);
-	stopCondition=0;
-      }
-      ForkInfoObj(sem_t * newSem)
-      {
-        control_sem2_ = newSem;
+	control_sem_ = new sem_t;
+	sem_init(control_sem_,0,0);
 	stopCondition=0;
       }
       ~ForkInfoObj()
       {
-        //sem_post(&mst_ep_sem_);
-	sem_destroy(control_sem2_);
-	delete control_sem2_;
-	//sem_destroy(control_sem_);
+	sem_destroy(control_sem_);
+	delete control_sem_;
       }
       void lock() {if (mst_lock_) pthread_mutex_lock(mst_lock_);}
       void unlock() {if (mst_lock_) pthread_mutex_unlock(mst_lock_);}
@@ -51,7 +44,6 @@ namespace moduleweb {
       ForkParams forkParams;
       unsigned int stopCondition;
       sem_t *control_sem_;
-      sem_t *control_sem2_;
       pthread_mutex_t * mst_lock_;
       void * fuAddr;
   };
