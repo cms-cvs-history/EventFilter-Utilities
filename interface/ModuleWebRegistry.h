@@ -46,7 +46,7 @@ namespace evf
     private:
       typedef std::map<std::string, ModuleWeb*> dct;
       typedef dct::iterator idct;
-      void openBackDoor(const std::string &, unsigned int timeout_sec = 0);
+      void openBackDoor(const std::string &, unsigned int timeout_sec = 0, bool * started = 0);
       void closeBackDoor(const std::string &);
       void clear();
       dct clm_;

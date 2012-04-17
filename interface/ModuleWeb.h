@@ -60,7 +60,7 @@ namespace moduleweb {
     protected:
       std::string moduleName_;
     private:
-      virtual void openBackDoor(unsigned int timeout_sec = 0){};
+      virtual void openBackDoor(unsigned int timeout_sec = 0, bool * started = 0){};
       virtual void closeBackDoor(){};
       virtual void publishForkInfo(moduleweb::ForkInfoObj *forkInfoObj);
       friend class ModuleWebRegistry;
