@@ -1,4 +1,11 @@
+2012-04-27 Srecko Morovic <srecko.morovic@cern.ch>
+
+	* V00-19-24
+	* fill ascii chart directly from deque elements,
+	  it is not guaranteed to be contiguous in memory
+
 2012-04-22 Srecko Morovic <srecko.morovic@cern.ch>
+
 	* V00-19-22
 	* updated ShmOutputModule interfaces
 	* support for nExpectedEPs in I2O header
