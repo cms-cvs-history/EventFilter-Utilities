@@ -1,3 +1,7 @@
+2012-04-30 Srecko Morovic <srecko.morovic@cern.ch>
+	* V00-19-25
+	* moved ShmOutputModuleRegistry to Modules
+
 2012-04-27 Srecko Morovic <srecko.morovic@cern.ch>
 
 	* V00-19-24
