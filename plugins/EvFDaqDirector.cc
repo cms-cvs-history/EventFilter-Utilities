@@ -129,7 +129,7 @@ namespace evf{
     else
       {
 	bu_readlock_fd_ = open(bulockfile.c_str(),O_RDWR);
-	if(bu_readlock_fd_==-1) std::cout << "problem with creating filedesc for bureadlock " << lockfile << " "
+	if(bu_readlock_fd_==-1) std::cout << "problem with creating filedesc for bureadlock " << bulockfile << " "
 					  << strerror(errno) << "\n";
 	else
 	  std::cout << "creating filedesc for bureadlock " 
@@ -195,8 +195,7 @@ namespace evf{
   }
 
   int EvFDaqDirector::updateFuLock(unsigned int &ls){
-    int check=0;
-    int retval = 0;
+    unsigned int retval = 0;
     fcntl(fu_readwritelock_fd_,F_SETLKW,&fu_rw_flk);
     if(fu_rw_lock_stream != 0){
       unsigned int readval;
@@ -207,7 +206,7 @@ namespace evf{
 	fscanf(fu_rw_lock_stream,"%u",p);
 	retval = readval;
       }
-      if(retval>=ls)ls=retval+1
+      if(retval>=ls)ls=retval+1;
       check = fseek(fu_rw_lock_stream,0,SEEK_SET);
       if(check==0)
 	fprintf(fu_rw_lock_stream,"%u",ls);
@@ -231,7 +230,6 @@ namespace evf{
     if(bu_r_lock_stream){
       unsigned int readval;
       int check = 0;
-      struct stat buf;
       unsigned int *p = &readval;
       check = fseek(bu_r_lock_stream,0,SEEK_SET);
       if(check==0){
@@ -257,7 +255,6 @@ namespace evf{
     if(fu_rw_lock_stream){
       unsigned int readval;
       int check = 0;
-      struct stat buf;
       unsigned int *p = &readval;
       check = fseek(fu_rw_lock_stream,0,SEEK_SET);
       if(check==0){
