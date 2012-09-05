@@ -8,6 +8,12 @@
 #include "EventFilter/Utilities/plugins/ExceptionGenerator.h"
 #include "EventFilter/Utilities/plugins/EvFRecordInserter.h"
 #include "EventFilter/Utilities/plugins/EvFRecordUnpacker.h"
+#include "EventFilter/Utilities/plugins/EvFBuildingThrottle.h"
+#include "EventFilter/Utilities/plugins/EvFDaqDirector.h"
+#include "EventFilter/Utilities/plugins/RawEventFileWriterForBU.h"
+#include "EventFilter/Utilities/plugins/RecoEventWriterForFU.h"
+#include "EventFilter/Utilities/plugins/RecoEventOutputModuleForFU.h"
+#include "EventFilter/Utilities/plugins/RawEventOutputModuleForBU.h"
 
 using namespace edm::serviceregistry;
 using namespace evf;
@@ -16,11 +22,18 @@ typedef edm::serviceregistry::AllArgsMaker<MicroStateService> MicroStateServiceM
 typedef ParameterSetMaker<ModuleWebRegistry> maker1;
 typedef ParameterSetMaker<ServiceWebRegistry> maker2;
 
+typedef RawEventOutputModuleForBU<RawEventFileWriterForBU> RawStreamFileWriterForBU;
+typedef RecoEventOutputModuleForFU<RecoEventWriterForFU> Stream;
+
 DEFINE_FWK_SERVICE_MAKER(MicroStateService, MicroStateServiceMaker);
 DEFINE_FWK_SERVICE_MAKER(ModuleWebRegistry,maker1);
 DEFINE_FWK_SERVICE_MAKER(ServiceWebRegistry,maker2);
 DEFINE_FWK_SERVICE(TimeProfilerService);
 DEFINE_FWK_SERVICE(Stepper);
+DEFINE_FWK_SERVICE(EvFBuildingThrottle);
+DEFINE_FWK_SERVICE(EvFDaqDirector);
 DEFINE_FWK_MODULE(ExceptionGenerator);
 DEFINE_FWK_MODULE(EvFRecordInserter);
 DEFINE_FWK_MODULE(EvFRecordUnpacker);
+DEFINE_FWK_MODULE(RawStreamFileWriterForBU);
+DEFINE_FWK_MODULE(Stream);
