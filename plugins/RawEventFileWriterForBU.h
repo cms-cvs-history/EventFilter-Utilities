@@ -1,7 +1,7 @@
 #ifndef EVFRAWEVENTFILEWRITERFORBU
 #define EVFRAWEVENTFILEWRITERFORBU
 
-// $Id: RawEventFileWriterForBU.h,v 1.3 2010/02/18 09:19:02 mommsen Exp $
+// $Id: RawEventFileWriterForBU.h,v 1.1.2.1 2012/09/04 12:49:24 meschi Exp $
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "IOPool/Streamer/interface/FRDEventMessage.h"
@@ -12,6 +12,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "boost/shared_array.hpp"
+
 class RawEventFileWriterForBU 
 {
  public:
@@ -21,6 +23,7 @@ class RawEventFileWriterForBU
   ~RawEventFileWriterForBU();
 
   void doOutputEvent(FRDEventMsgView const& msg);
+  void doOutputEvent(boost::shared_array<unsigned char>& msg) {};
   void doOutputEventFragment(unsigned char* dataPtr,
                              unsigned long dataSize);
   void doFlushFile();
@@ -29,6 +32,7 @@ class RawEventFileWriterForBU
   void start() {}
   void stop() {}
   void initialize(std::string const& name);
+  bool sharedMode() const {return false;}
  private:
 
 
