@@ -43,6 +43,8 @@ class RawEventOutputModuleForBU : public edm::OutputModule
   std::string label_;
   std::string instance_;
   unsigned long long totsize;
+  unsigned long long writtensize;
+  unsigned long long writtenSizeLast;
   unsigned int totevents;
   timeval startOfLastLumi;
   bool firstLumi_;
@@ -55,6 +57,8 @@ RawEventOutputModuleForBU<Consumer>::RawEventOutputModuleForBU(edm::ParameterSet
   label_(ps.getUntrackedParameter<std::string>("ProductLabel","source")),
   instance_(ps.getUntrackedParameter<std::string>("ProductInstance","")),
   totsize(0LL),
+  writtensize(0LL),
+  writtenSizeLast(0LL),
   totevents(0),
   firstLumi_(true)
 {
@@ -107,7 +111,12 @@ void RawEventOutputModuleForBU<Consumer>::write(edm::EventPrincipal const& e) {
 
   // create the FRDEventMsgView and use the template consumer to write it out
   FRDEventMsgView msg(workBuffer.get());
-  templateConsumer_->doOutputEvent(msg);
+  writtensize+=msg.size();
+
+  if (templateConsumer_->sharedMode())
+    templateConsumer_->doOutputEvent(workBuffer);
+  else
+    templateConsumer_->doOutputEvent(msg);
 }
 
 template <class Consumer>
@@ -134,7 +143,9 @@ void RawEventOutputModuleForBU<Consumer>::beginLuminosityBlock(edm::LuminosityBl
     long long elapsedusec = (now.tv_sec - startOfLastLumi.tv_sec)*1000000+now.tv_usec-startOfLastLumi.tv_usec;
     std::cout << "(now.tv_sec - startOfLastLumi.tv_sec) " << now.tv_sec <<"-" << startOfLastLumi.tv_sec
 	      <<" (now.tv_usec-startOfLastLumi.tv_usec) " << now.tv_usec << "-" << startOfLastLumi.tv_usec << std::endl;
-    std::cout << "elapsedusec " << elapsedusec << std::endl;
+    std::cout << "elapsedusec " << elapsedusec << "  totevents " << totevents << "  size (GB)" << writtensize 
+	      << "  rate " << (writtensize-writtenSizeLast)/elapsedusec << " MB/s" <<std::endl;
+    writtenSizeLast=writtensize;
     ::gettimeofday(&startOfLastLumi,0);
     edm::Service<evf::EvFDaqDirector>()->writeLsStatisticsBU(ls.id().luminosityBlock(), totevents, totsize, elapsedusec);
   }

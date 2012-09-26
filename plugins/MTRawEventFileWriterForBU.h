@@ -1,7 +1,7 @@
 #ifndef EVFMTRAWEVENTFILEWRITERFORBU
 #define EVFMTRAWEVENTFILEWRITERFORBU
 
-// $Id: RawEventFileWriterForBU.h,v 1.1.2.1 2012/09/04 12:49:24 meschi Exp $
+// $Id: MTRawEventFileWriterForBU.h,v 1.1.2.1 2012/09/06 20:21:28 smorovic Exp $
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "IOPool/Streamer/interface/FRDEventMessage.h"
@@ -18,6 +18,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "boost/shared_array.hpp"
+
 namespace fwriter {
   class EventContainer;
 }
@@ -31,6 +33,7 @@ class MTRawEventFileWriterForBU
   ~MTRawEventFileWriterForBU();
 
   void doOutputEvent(FRDEventMsgView const& msg);
+  void doOutputEvent(boost::shared_array<unsigned char> & msg);
   void doOutputEventFragment(unsigned char* dataPtr,
                              unsigned long dataSize);
   void doFlushFile();
@@ -41,11 +44,13 @@ class MTRawEventFileWriterForBU
     finishThreads();
   }
   void initialize(std::string const& name);
+  bool sharedMode() const {return sharedMode_;}
  private:
 
   std::string fileName_;
 
-  void queueEvent(const char* buffer,unsigned long size);
+  inline void queueEvent(const char* buffer,unsigned long size);
+  inline void queueEvent(boost::shared_array<unsigned char> & msg);
   void dispatchThreads(std::string fileBase, unsigned int instances, std::string suffix);
 
   void finishThreads()
@@ -61,7 +66,7 @@ class MTRawEventFileWriterForBU
   unsigned int count_;
   unsigned int numWriters_;
   unsigned int eventBufferSize_;
-
+  bool sharedMode_;
   std::atomic<bool> close_flag_;
   std::mutex queue_lock;
 
@@ -74,5 +79,6 @@ class MTRawEventFileWriterForBU
   std::vector<uint32> v_adlera_;
   std::vector<uint32> v_adlerb_;
 
+  unsigned char * fileHeader_;
 };
 #endif

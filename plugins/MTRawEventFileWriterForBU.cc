@@ -1,4 +1,4 @@
-// $Id: RawEventFileWriterForBU.cc,v 1.1.2.1 2012/09/04 12:49:24 meschi Exp $
+// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.1 2012/09/06 20:21:28 smorovic Exp $
 
 #include "MTRawEventFileWriterForBU.h"
 #include "FWCore/Utilities/interface/Adler32Calculator.h"
@@ -18,12 +18,22 @@ namespace fwriter {
 	writtenSize_=0;
 	evtBufSize_=evtBufSize;
 	data_.reset(new unsigned char [evtBufSize]);
+	shared_mode_=false;
+      }
+      EventContainer()
+      {
+	writtenSize_=0;
+	evtBufSize_=0;
+	shared_data_.reset();
+	shared_mode_=true;
       }
       ~EventContainer() {}
 
+      bool sharedMode() {return shared_mode_;}
       unsigned int getSize() const {return writtenSize_;}
       unsigned int getBufSize() const {return evtBufSize_;}
       unsigned char* getBuffer() const {return data_.get();}
+      boost::shared_array<unsigned char> * getSharedBuffer() {return & shared_data_;}
 
       void putNewEvent(unsigned char* addr, unsigned int size) {
 	if (size>evtBufSize_) {
@@ -34,21 +44,33 @@ namespace fwriter {
 	writtenSize_=size;
       }
 
+      void putNewEvent(boost::shared_array<unsigned char> & msg) {
+	shared_data_ = msg;
+      }
+
     private:
       unsigned int writtenSize_;
       unsigned int evtBufSize_;
       std::auto_ptr<unsigned char> data_;
+      boost::shared_array<unsigned char> shared_data_;
+      bool shared_mode_;
   };
 }
 
 MTRawEventFileWriterForBU::MTRawEventFileWriterForBU(edm::ParameterSet const& ps):
   numWriters_(ps.getUntrackedParameter<unsigned int>("numWriters",1))
   ,eventBufferSize_(ps.getUntrackedParameter<unsigned int>("eventBufferSize",30))
+  ,sharedMode_(ps.getUntrackedParameter<bool>("sharedMode",true))
 {
+  if (sharedMode_) std::cout << "Using shared mode (zero copy) for output"<<std::endl;
   for (unsigned int i=0;i<eventBufferSize_;i++) {
-    EventPool.push_back(new fwriter::EventContainer(1048576));
+    if (!sharedMode_)
+      EventPool.push_back(new fwriter::EventContainer(1048576));
+    else
+      EventPool.push_back(new fwriter::EventContainer());
     freeIds.push_back(i);
   }
+  fileHeader_= new unsigned char[1024*1024]; 
   //  initialize(ps.getUntrackedParameter<std::string>("fileName", "testFRDfile.dat"));
 }
 
@@ -65,7 +87,15 @@ MTRawEventFileWriterForBU::~MTRawEventFileWriterForBU()
 
 void MTRawEventFileWriterForBU::doOutputEvent(FRDEventMsgView const& msg)
 {
+  if (sharedMode_) return;
   queueEvent((const char*)msg.startAddress(), msg.size());
+}
+
+
+void MTRawEventFileWriterForBU::doOutputEvent(boost::shared_array<unsigned char> & msg)
+{
+  if (!sharedMode_) return;
+  queueEvent(msg);
 }
 
 void MTRawEventFileWriterForBU::doFlushFile()
@@ -131,6 +161,31 @@ void MTRawEventFileWriterForBU::queueEvent(const char* buffer,unsigned long size
   queue_lock.unlock();
 }
 
+
+void MTRawEventFileWriterForBU::queueEvent(boost::shared_array<unsigned char>& msg)
+{
+
+  bool queuing = false;
+  unsigned int freeId = 0xffff;
+  while (!queuing) {
+    queue_lock.lock();
+    if (freeIds.size()) {
+      freeId = freeIds.front();
+      freeIds.pop_front();
+      queuing = true;
+    }
+    queue_lock.unlock();
+    if (!queuing) usleep(100000);
+  }
+  assert(freeId!=0xff);
+  EventPool[freeId]->putNewEvent(msg);
+
+  queue_lock.lock();
+  queuedIds.push_back(freeId);
+  queue_lock.unlock();
+}
+
+
 void MTRawEventFileWriterForBU::dispatchThreads(std::string fileBase, unsigned int instances, std::string suffix)
 {
   close_flag_=false;
@@ -164,7 +219,12 @@ void MTRawEventFileWriterForBU::threadRunner(std::string fileName,unsigned int i
     throw cms::Exception("RawEventFileWriterForBU","initialize")
       << "Error opening FED Raw Data event output file: " << fileName << "\n";
   }
-
+  //prepare header
+  /*
+  memset ((void*)fileHeader_,0,1024*1024);
+  fileHeader_[0]=3;//version
+  ost_->write((const char*)fileHeader_,1024*1024);
+  */
   //event writing loop
   while (1) {
     queue_lock.lock();
@@ -184,8 +244,15 @@ void MTRawEventFileWriterForBU::threadRunner(std::string fileName,unsigned int i
     unsigned int qid = queuedIds.back();
     queuedIds.pop_back();
     queue_lock.unlock();
-
-    ost_->write((const char*) EventPool[qid]->getBuffer(), EventPool[qid]->getSize());
+    if (!EventPool[qid]->sharedMode()) {
+      ost_->write((const char*) EventPool[qid]->getBuffer(), EventPool[qid]->getSize());
+    }
+    else {
+      boost::shared_array<unsigned char> * sharedBuf = EventPool[qid]->getSharedBuffer();
+      FRDEventMsgView frd((*sharedBuf).get());
+      ost_->write((const char*) frd.startAddress(),frd.size());
+      sharedBuf->reset();//release reference
+    }
     if (ost_->fail()) {
       //todo:signal to main thread
       throw cms::Exception("RawEventFileWriterForBU", "doOutputEventFragment")
