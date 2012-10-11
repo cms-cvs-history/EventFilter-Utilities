@@ -149,7 +149,8 @@ FedRawDataInputSource::grabNextFile(boost::filesystem::path const& nextFile)
   }
   catch (const boost::filesystem::filesystem_error& ex)
   {
-    std::cout << ex.what() << std::endl;
+    // another processed grabed the file, try again
+    grabNextFile(nextFile);
   }
 }
 
