@@ -135,7 +135,7 @@ FedRawDataInputSource::openNextFile()
 
   openFile(nextFile);
   
-  while ( fileStream_ == 0 ) grabNextFile(nextFile);
+  while ( fileStream_ == 0 && !runEnded() ) grabNextFile(nextFile);
 
   return ( fileStream_ != 0 );
 }
@@ -162,18 +162,14 @@ FedRawDataInputSource::grabNextFile(boost::filesystem::path const& nextFile)
   
   try
   {
-    do
+    boost::filesystem::directory_iterator itEnd;
+    for ( boost::filesystem::directory_iterator it(runDirectory_);
+          it != itEnd; ++it)
     {
-      boost::filesystem::directory_iterator itEnd;
-      for ( boost::filesystem::directory_iterator it(runDirectory_);
-            it != itEnd; ++it)
-      {
-        if ( it->path().extension() == ".raw" )
-          files.push_back(*it);
-      }
+      if ( it->path().extension() == ".raw" )
+        files.push_back(*it);
     }
-    while ( files.empty() && !runEnded() );
-
+    
     if ( !files.empty() )
     {
       std::sort(files.begin(), files.end());
