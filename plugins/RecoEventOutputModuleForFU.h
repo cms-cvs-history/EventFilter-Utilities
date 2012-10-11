@@ -33,7 +33,10 @@ namespace evf {
     //    virtual void beginRun(edm::RunPrincipal const&);
     virtual void beginLuminosityBlock(edm::LuminosityBlockPrincipal const&);
     void         initializeStreams(){
-      smpath_ = edm::Service<evf::EvFDaqDirector>()->getPathForFU();
+      if ( baseDir_.empty() )
+        smpath_ = edm::Service<evf::EvFDaqDirector>()->getPathForFU();
+      else
+        smpath_ = baseDir_;
       events_base_filename_ = smpath_+"/"+stream_label_;
     }
 
@@ -41,6 +44,7 @@ namespace evf {
     std::auto_ptr<Consumer> c_;
     std::string stream_label_;
     std::string events_base_filename_;
+    std::string baseDir_;
     std::string smpath_;
   }; //end-of-class-def
 
@@ -48,8 +52,10 @@ namespace evf {
   RecoEventOutputModuleForFU<Consumer>::RecoEventOutputModuleForFU(edm::ParameterSet const& ps) :
     edm::StreamerOutputModuleBase(ps),
     c_(new Consumer(ps)),
-    stream_label_(ps.getParameter<std::string>("@module_label"))
+    stream_label_(ps.getParameter<std::string>("@module_label")),
+    baseDir_(ps.getUntrackedParameter<std::string>("baseDir",""))
       {
+        initializeStreams();
       }
 
   template<typename Consumer>
@@ -97,6 +103,8 @@ namespace evf {
     edm::ParameterSetDescription desc;
     edm::StreamerOutputModuleBase::fillDescription(desc);
     Consumer::fillDescription(desc);
+    desc.addUntracked<std::string>("baseDir", "")
+        ->setComment("Top level output directory");
     descriptions.add("streamerOutput", desc);
   }
 
