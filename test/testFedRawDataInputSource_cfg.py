@@ -14,7 +14,7 @@ process.MessageLogger = cms.Service("MessageLogger",
                                     )
 
 process.source = cms.Source("FedRawDataInputSource",
-                            runDirectory = cms.untracked.string('/afs/cern.ch/user/m/mommsen/scratch0')
+                            runDirectory = cms.untracked.string('/afs/cern.ch/user/m/mommsen/scratch0/run1210111535')
                            )
     #process.source = cms.Source("ErrorStreamSource",
     #                            fileNames = cms.untracked.vstring('file:/afs/cern.ch/user/m/mommsen/scratch0/27627/0000000000000000.raw')

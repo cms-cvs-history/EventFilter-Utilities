@@ -1,3 +1,4 @@
+#include <fcntl.h>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -21,7 +22,8 @@
 FedRawDataInputSource::FedRawDataInputSource(edm::ParameterSet const& pset, edm::InputSourceDescription const& desc) :
 edm::RawInputSource(pset,desc),
 runDirectory_(pset.getUntrackedParameter<std::string>("runDirectory")),
-fileIndex_(0)
+fileIndex_(0),
+fileStream_(0)
 {
   std::ostringstream myDir;
   myDir << std::setfill('0') << std::setw(5) << getpid();
@@ -33,35 +35,53 @@ fileIndex_(0)
 
 
 FedRawDataInputSource::~FedRawDataInputSource()
-{}
+{
+  if (fileStream_) fclose(fileStream_);
+  fileStream_ = 0;
+}
 
 
 std::auto_ptr<edm::Event>
 FedRawDataInputSource::readOneEvent()
 {
-  uint32_t version, runNumber, lumiSection, eventNumber;
+  struct
+  {
+    uint32_t version;
+    uint32_t runNumber;
+    uint32_t lumiSection;
+    uint32_t eventNumber;
+  } eventHeader;
 
-  if ( !finput_.is_open() ||
-    (finput_.peek() == EOF) ) openNextFile();
-  if ( !finput_.is_open() )
+  if ( eofReached() && !openNextFile() )
   {
     // run has ended
     return std::auto_ptr<edm::Event>(0);
   }
-  finput_.read((char*)&version, sizeof(uint32_t));
-  assert( version == 2 );
-  finput_.read((char*)&runNumber, sizeof(uint32_t));
-  finput_.read((char*)&lumiSection, sizeof(uint32_t));
-  finput_.read((char*)&eventNumber, sizeof(uint32_t));
+  fread((void*)&eventHeader, sizeof(uint32_t), 4, fileStream_);
+  assert( eventHeader.version == 2 );
 
   std::auto_ptr<FEDRawDataCollection> rawData(new FEDRawDataCollection);
   edm::Timestamp tstamp = fillFEDRawDataCollection(rawData);
 
-  std::auto_ptr<edm::Event> event = makeEvent(runNumber, lumiSection, eventNumber, tstamp);
+  std::auto_ptr<edm::Event> event =
+    makeEvent(eventHeader.runNumber, eventHeader.lumiSection, eventHeader.eventNumber, tstamp);
   
   event->put(rawData);
  
   return event;
+}
+
+
+bool
+FedRawDataInputSource::eofReached() const
+{
+  if ( fileStream_ == 0 ) return true;
+
+  int c;
+  c = fgetc(fileStream_);
+  ungetc(c, fileStream_);
+
+  return (c == EOF);
 }
 
 
@@ -71,7 +91,7 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
   edm::Timestamp tstamp;
   size_t totalEventSize = 0;
   uint32_t fedSizes[1024];
-  finput_.read((char*)fedSizes, 1024*sizeof(uint32_t));
+  fread((void*)fedSizes, sizeof(uint32_t), 1024, fileStream_);
   for (unsigned int i=0;i<1024;i++) {
     totalEventSize += fedSizes[i];
   }
@@ -81,7 +101,7 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
     evf::evtn::evm_board_setformat(gtpevmsize);
   
   char* event = new char[totalEventSize];
-  finput_.read(event, totalEventSize);
+  fread((void*)event, totalEventSize, 1, fileStream_);
   
   while ( totalEventSize>0 )
   {
@@ -105,19 +125,33 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
 }
 
 
-void
+bool
 FedRawDataInputSource::openNextFile()
 {
-  finput_.close();
-  finput_.clear();
-
   boost::filesystem::path nextFile = workingDirectory_;
   std::ostringstream fileName;
   fileName << std::setfill('0') << std::setw(16) << fileIndex_++ << ".raw";
   nextFile /= fileName.str();
-  finput_.open(nextFile.c_str(), std::ios::in|std::ios::binary);
+
+  openFile(nextFile);
   
-  if ( ! finput_.is_open() ) grabNextFile(nextFile);
+  while ( fileStream_ == 0 ) grabNextFile(nextFile);
+
+  return ( fileStream_ != 0 );
+}
+
+
+void
+FedRawDataInputSource::openFile(boost::filesystem::path const& nextFile)
+{
+  if (fileStream_) fclose(fileStream_);
+  fileStream_ = 0;
+  
+  const int fileDescriptor = open(nextFile.c_str(), O_RDONLY);
+  if ( fileDescriptor != -1 )
+  {
+    fileStream_ = fdopen(fileDescriptor, "rb");
+  }
 }
 
 
@@ -144,13 +178,12 @@ FedRawDataInputSource::grabNextFile(boost::filesystem::path const& nextFile)
     {
       std::sort(files.begin(), files.end());
       boost::filesystem::rename(files.front(), nextFile);
-      finput_.open(nextFile.c_str(), std::ios::in|std::ios::binary);
+      openFile(nextFile);
     }
   }
   catch (const boost::filesystem::filesystem_error& ex)
   {
-    // another processed grabed the file, try again
-    grabNextFile(nextFile);
+    // Another process grabbed the file.
   }
 }
 

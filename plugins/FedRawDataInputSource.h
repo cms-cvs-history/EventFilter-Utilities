@@ -1,8 +1,8 @@
 #ifndef EventFilter_Utilities_FedRawDataInputSource_h
 #define EventFilter_Utilities_FedRawDataInputSource_h
 
-#include <fstream>
 #include <memory>
+#include <stdio.h>
 
 #include "boost/filesystem.hpp"
 
@@ -26,14 +26,16 @@ protected:
 
 private:
   edm::Timestamp fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollection>&);
-  void openNextFile();
-  void grabNextFile(boost::filesystem::path const& nextFile);
+  bool openNextFile();
+  void openFile(boost::filesystem::path const&);
+  void grabNextFile(boost::filesystem::path const&);
+  bool eofReached() const;
   bool runEnded() const;
 
   const boost::filesystem::path runDirectory_;
   boost::filesystem::path workingDirectory_;
   size_t fileIndex_;
-  std::ifstream finput_;
+  FILE* fileStream_;
   
 };
 
