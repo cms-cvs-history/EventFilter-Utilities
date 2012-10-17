@@ -34,6 +34,7 @@ private:
 
   const boost::filesystem::path runDirectory_;
   boost::filesystem::path workingDirectory_;
+  boost::filesystem::path openFile_;
   size_t fileIndex_;
   FILE* fileStream_;
   

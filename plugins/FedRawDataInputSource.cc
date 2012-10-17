@@ -144,13 +144,18 @@ FedRawDataInputSource::openNextFile()
 void
 FedRawDataInputSource::openFile(boost::filesystem::path const& nextFile)
 {
-  if (fileStream_) fclose(fileStream_);
+  if (fileStream_)
+  {
+    fclose(fileStream_);
+    boost::filesystem::remove(openFile_); // wont work in case of forked children
+  }
   fileStream_ = 0;
   
   const int fileDescriptor = open(nextFile.c_str(), O_RDONLY);
   if ( fileDescriptor != -1 )
   {
     fileStream_ = fdopen(fileDescriptor, "rb");
+    openFile_ = nextFile;
   }
 }
 
@@ -188,7 +193,7 @@ bool
 FedRawDataInputSource::runEnded() const
 {
   boost::filesystem::path endOfRunMarker = runDirectory_;
-  endOfRunMarker /= "EndOfRunMarker";
+  endOfRunMarker /= "EndOfRun.jsn";
   return boost::filesystem::exists(endOfRunMarker);
 }
 
