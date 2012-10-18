@@ -25,14 +25,15 @@ protected:
   virtual std::auto_ptr<edm::Event> readOneEvent();
 
 private:
+  void findRunDir(const std::string& rootDirectory);
   edm::Timestamp fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollection>&);
   bool openNextFile();
   void openFile(boost::filesystem::path const&);
-  void grabNextFile(boost::filesystem::path const&);
+  bool grabNextFile(boost::filesystem::path const&);
   bool eofReached() const;
   bool runEnded() const;
 
-  const boost::filesystem::path runDirectory_;
+  boost::filesystem::path runDirectory_;
   boost::filesystem::path workingDirectory_;
   boost::filesystem::path openFile_;
   size_t fileIndex_;

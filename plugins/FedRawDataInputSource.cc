@@ -21,10 +21,11 @@
 
 FedRawDataInputSource::FedRawDataInputSource(edm::ParameterSet const& pset, edm::InputSourceDescription const& desc) :
 edm::RawInputSource(pset,desc),
-runDirectory_(pset.getUntrackedParameter<std::string>("runDirectory")),
 fileIndex_(0),
 fileStream_(0)
 {
+  findRunDir( pset.getUntrackedParameter<std::string>("rootDirectory") );
+
   std::ostringstream myDir;
   myDir << std::setfill('0') << std::setw(5) << getpid();
   workingDirectory_ = runDirectory_;
@@ -38,6 +39,28 @@ FedRawDataInputSource::~FedRawDataInputSource()
 {
   if (fileStream_) fclose(fileStream_);
   fileStream_ = 0;
+}
+
+
+void
+FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
+{
+  // The run dir should be set via the configuration
+  // For now, just grab the latest run directory available
+  
+  std::vector<boost::filesystem::path> dirs;
+  boost::filesystem::directory_iterator itEnd;
+  do {
+    for ( boost::filesystem::directory_iterator it(rootDirectory);
+          it != itEnd; ++it)
+    {
+      if ( boost::filesystem::is_directory(it->path()) &&
+        std::string::npos != it->path().string().find("run") )
+        dirs.push_back(*it);
+    }
+  } while ( dirs.empty() );
+  std::sort(dirs.begin(), dirs.end());
+  runDirectory_ = dirs.front();
 }
 
 
@@ -55,6 +78,7 @@ FedRawDataInputSource::readOneEvent()
   if ( eofReached() && !openNextFile() )
   {
     // run has ended
+    boost::filesystem::remove(workingDirectory_);
     return std::auto_ptr<edm::Event>(0);
   }
   fread((void*)&eventHeader, sizeof(uint32_t), 4, fileStream_);
@@ -135,7 +159,7 @@ FedRawDataInputSource::openNextFile()
 
   openFile(nextFile);
   
-  while ( fileStream_ == 0 && !runEnded() ) grabNextFile(nextFile);
+  while ( !grabNextFile(nextFile) ) ::usleep(1000);
 
   return ( fileStream_ != 0 );
 }
@@ -147,9 +171,9 @@ FedRawDataInputSource::openFile(boost::filesystem::path const& nextFile)
   if (fileStream_)
   {
     fclose(fileStream_);
+    fileStream_ = 0;
     boost::filesystem::remove(openFile_); // wont work in case of forked children
   }
-  fileStream_ = 0;
   
   const int fileDescriptor = open(nextFile.c_str(), O_RDONLY);
   if ( fileDescriptor != -1 )
@@ -160,7 +184,7 @@ FedRawDataInputSource::openFile(boost::filesystem::path const& nextFile)
 }
 
 
-void
+bool
 FedRawDataInputSource::grabNextFile(boost::filesystem::path const& nextFile)
 {
   std::vector<boost::filesystem::path> files;
@@ -175,17 +199,23 @@ FedRawDataInputSource::grabNextFile(boost::filesystem::path const& nextFile)
         files.push_back(*it);
     }
     
-    if ( !files.empty() )
+    if ( files.empty() )
+    {
+      if ( runEnded() ) return true;
+    }
+    else
     {
       std::sort(files.begin(), files.end());
       boost::filesystem::rename(files.front(), nextFile);
       openFile(nextFile);
+      return true;
     }
   }
   catch (const boost::filesystem::filesystem_error& ex)
   {
     // Another process grabbed the file.
   }
+  return false;
 }
 
 
