@@ -13,6 +13,7 @@
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/InputSourceDescription.h"
 #include "FWCore/Framework/interface/InputSourceMacros.h"
+#include "FWCore/MessageLogger/interface/MessageLogger.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 
 #include "interface/shared/fed_header.h"
@@ -60,7 +61,8 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
     }
   } while ( dirs.empty() );
   std::sort(dirs.begin(), dirs.end());
-  runDirectory_ = dirs.front();
+  runDirectory_ = dirs.back();
+  edm::LogInfo("FedRawDataInputSource") << "Getting data from " << runDirectory_.string();
 }
 
 
