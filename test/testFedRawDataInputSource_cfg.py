@@ -1,4 +1,7 @@
 import FWCore.ParameterSet.Config as cms
+import os
+
+user = os.environ['USER']
 
 process = cms.Process("TEST")
 process.maxEvents = cms.untracked.PSet(
@@ -14,7 +17,7 @@ process.MessageLogger = cms.Service("MessageLogger",
     )
 
 process.source = cms.Source("FedRawDataInputSource",
-    rootDirectory = cms.untracked.string('/data/mommsen/BU-000')
+rootDirectory = cms.untracked.string("/data/appliance/"+user+"/BU-000")
     )
 
 process.a = cms.EDAnalyzer("ExceptionGenerator",
@@ -30,7 +33,7 @@ process.psa = cms.EDFilter("HLTPrescaler",
 process.aa = cms.Path(process.psa*process.a)
 
 process.streamA = cms.OutputModule("Stream",
-    baseDir = cms.untracked.string("/data/mommsen/sm"),
+    baseDir = cms.untracked.string("/data/appliance/"+user+"/sm"),
     SelectEvents = cms.untracked.PSet(  SelectEvents = cms.vstring( 'aa' ) )
     )
 
