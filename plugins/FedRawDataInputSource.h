@@ -8,7 +8,8 @@
 
 #include "DataFormats/Provenance/interface/Timestamp.h"
 #include "FWCore/Sources/interface/RawInputSource.h"
-
+#include "FWCore/Framework/interface/EventPrincipal.h"
+#include "FWCore/Sources/interface/DaqProvenanceHelper.h"
 
 class FEDRawDataCollection;
 class InputSourceDescription;
@@ -22,9 +23,15 @@ public:
   virtual ~FedRawDataInputSource();
   
 protected:
-  virtual std::auto_ptr<edm::Event> readOneEvent();
+  virtual edm::EventPrincipal * read();
+  //virtual std::auto_ptr<edm::Event> readOneEvent();
 
 private:
+  virtual void preForkReleaseResources();
+  virtual void postForkReacquireResources(boost::shared_ptr<edm::multicore::MessageReceiverForSource>);
+  virtual void rewind_();
+
+  void createWorkingDirectory();
   void findRunDir(const std::string& rootDirectory);
   edm::Timestamp fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollection>&);
   bool openNextFile();
@@ -33,12 +40,17 @@ private:
   bool eofReached() const;
   bool runEnded() const;
 
+  edm::DaqProvenanceHelper daqProvenanceHelper_;
+
   boost::filesystem::path runDirectory_;
+  edm::RunNumber_t runNumber_;
+
   boost::filesystem::path workingDirectory_;
   boost::filesystem::path openFile_;
   size_t fileIndex_;
   FILE* fileStream_;
-  
+  bool workDirCreated_;
+
 };
 
 #endif // EventFilter_Utilities_FedRawDataInputSource_h

@@ -22,17 +22,15 @@
 
 FedRawDataInputSource::FedRawDataInputSource(edm::ParameterSet const& pset, edm::InputSourceDescription const& desc) :
 edm::RawInputSource(pset,desc),
+daqProvenanceHelper_(edm::TypeID(typeid(FEDRawDataCollection))),
 fileIndex_(0),
-fileStream_(0)
+fileStream_(0),
+workDirCreated_(false)
 {
   findRunDir( pset.getUntrackedParameter<std::string>("rootDirectory") );
-
-  std::ostringstream myDir;
-  myDir << std::setfill('0') << std::setw(5) << getpid();
-  workingDirectory_ = runDirectory_;
-  workingDirectory_ /= myDir.str();
-  boost::filesystem::create_directories(workingDirectory_);
-  produces<FEDRawDataCollection>();
+  daqProvenanceHelper_.daqInit(productRegistryUpdate());
+  setNewRun();
+  setRunAuxiliary(new edm::RunAuxiliary(runNumber_, edm::Timestamp::beginOfTime(), edm::Timestamp::invalidTimestamp()));
 }
 
 
@@ -52,6 +50,7 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
   std::vector<boost::filesystem::path> dirs;
   boost::filesystem::directory_iterator itEnd;
   do {
+    usleep(500000);
     for ( boost::filesystem::directory_iterator it(rootDirectory);
           it != itEnd; ++it)
     {
@@ -62,12 +61,17 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
   } while ( dirs.empty() );
   std::sort(dirs.begin(), dirs.end());
   runDirectory_ = dirs.back();
+
+  std::string rnString = runDirectory_.string().substr(runDirectory_.string().find("run")+3);
+  runNumber_ = atoi(rnString.c_str());
+
   edm::LogInfo("FedRawDataInputSource") << "Getting data from " << runDirectory_.string();
+
 }
 
 
-std::auto_ptr<edm::Event>
-FedRawDataInputSource::readOneEvent()
+edm::EventPrincipal *
+FedRawDataInputSource::read()
 {
   struct
   {
@@ -80,8 +84,9 @@ FedRawDataInputSource::readOneEvent()
   if ( eofReached() && !openNextFile() )
   {
     // run has ended
-    boost::filesystem::remove(workingDirectory_);
-    return std::auto_ptr<edm::Event>(0);
+    if (workDirCreated_)
+      boost::filesystem::remove(workingDirectory_);
+    return 0;
   }
   fread((void*)&eventHeader, sizeof(uint32_t), 4, fileStream_);
   assert( eventHeader.version == 2 );
@@ -89,10 +94,11 @@ FedRawDataInputSource::readOneEvent()
   std::auto_ptr<FEDRawDataCollection> rawData(new FEDRawDataCollection);
   edm::Timestamp tstamp = fillFEDRawDataCollection(rawData);
 
-  std::auto_ptr<edm::Event> event =
+  edm::EventPrincipal * event =
     makeEvent(eventHeader.runNumber, eventHeader.lumiSection, eventHeader.eventNumber, tstamp);
-  
-  event->put(rawData);
+ 
+  edm::WrapperOwningHolder edp(new edm::Wrapper<FEDRawDataCollection>(rawData), edm::Wrapper<FEDRawDataCollection>::getInterface());
+  event->put(daqProvenanceHelper_.constBranchDescription_, edp, daqProvenanceHelper_.dummyProvenance_);
  
   return event;
 }
@@ -147,6 +153,7 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
     fedData.resize(fedSize);
     memcpy(fedData.data(),event+totalEventSize,fedSize);
   }
+  delete event;
   return tstamp;
 }
 
@@ -154,6 +161,7 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
 bool
 FedRawDataInputSource::openNextFile()
 {
+  if (!workDirCreated_) createWorkingDirectory();
   boost::filesystem::path nextFile = workingDirectory_;
   std::ostringstream fileName;
   fileName << std::setfill('0') << std::setw(16) << fileIndex_++ << ".raw";
@@ -183,6 +191,7 @@ FedRawDataInputSource::openFile(boost::filesystem::path const& nextFile)
     fileStream_ = fdopen(fileDescriptor, "rb");
     openFile_ = nextFile;
   }
+  std::cout << " tried to open file.. " <<  nextFile << " fd:" << fileDescriptor << std::endl;
 }
 
 
@@ -229,6 +238,34 @@ FedRawDataInputSource::runEnded() const
   return boost::filesystem::exists(endOfRunMarker);
 }
 
+
+void
+FedRawDataInputSource::preForkReleaseResources()
+{
+}
+
+void
+FedRawDataInputSource::postForkReacquireResources(boost::shared_ptr<edm::multicore::MessageReceiverForSource>)
+{
+  createWorkingDirectory();
+  InputSource::rewind();
+  setRunAuxiliary(new edm::RunAuxiliary(runNumber_, edm::Timestamp::beginOfTime(), edm::Timestamp::invalidTimestamp()));
+}
+
+void
+FedRawDataInputSource::rewind_() {}
+
+void FedRawDataInputSource::createWorkingDirectory() {
+ 
+  char thishost[256];
+  gethostname(thishost,255);
+  std::ostringstream myDir;
+  myDir << std::setfill('0') << std::setw(5) << thishost << "_" << getpid();
+  workingDirectory_ = runDirectory_;
+  workingDirectory_ /= myDir.str();
+  boost::filesystem::create_directories(workingDirectory_);
+  workDirCreated_=true;
+}
 
 // define this class as an input source
 DEFINE_FWK_INPUT_SOURCE(FedRawDataInputSource);
