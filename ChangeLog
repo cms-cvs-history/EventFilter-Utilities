@@ -1,5 +1,10 @@
 2012-11-01 Srecko Morovic <srecko.morovic@cern.ch>
 
+	* tag V02-20-00-01
+	* fixed non-linux compilation in multi-threaded fakeBU output module
+
+2012-11-01 Srecko Morovic <srecko.morovic@cern.ch>
+
 	* tag V02-20-00-00
 	* forkFBEvF branch (61X only)
 	* adapted FedRawData input source to latest upstream input source

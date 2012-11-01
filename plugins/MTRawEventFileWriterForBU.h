@@ -1,17 +1,20 @@
 #ifndef EVFMTRAWEVENTFILEWRITERFORBU
 #define EVFMTRAWEVENTFILEWRITERFORBU
 
-// $Id: MTRawEventFileWriterForBU.h,v 1.1.2.1 2012/09/06 20:21:28 smorovic Exp $
+// $Id: MTRawEventFileWriterForBU.h,v 1.1.2.2 2012/09/26 22:06:27 smorovic Exp $
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "IOPool/Streamer/interface/FRDEventMessage.h"
 
-#include <fstream>
+
+#ifdef linux
 #include <atomic>
 #include <mutex>
-#include <deque>
 #include <thread>
+#endif
 
+#include <fstream>
+#include <deque>
 #include <string.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -29,7 +32,6 @@ class MTRawEventFileWriterForBU
  public:
 
   explicit MTRawEventFileWriterForBU(edm::ParameterSet const& ps);
-  //explicit MTRawEventFileWriterForBU(std::string const& fileName);
   ~MTRawEventFileWriterForBU();
 
   void doOutputEvent(FRDEventMsgView const& msg);
@@ -56,8 +58,10 @@ class MTRawEventFileWriterForBU
   void finishThreads()
   {
     close_flag_=true;
+#ifdef linux
     for (auto w: writers) w->join();
     writers.clear();
+#endif
   }
   //opens file and waits for events
   void threadRunner(std::string fileName, unsigned int instance);
@@ -67,15 +71,19 @@ class MTRawEventFileWriterForBU
   unsigned int numWriters_;
   unsigned int eventBufferSize_;
   bool sharedMode_;
+#ifdef linux
   std::atomic<bool> close_flag_;
   std::mutex queue_lock;
+#endif
 
   //event buffer
   std::deque<unsigned int> freeIds;
   std::deque<unsigned int> queuedIds;
   std::vector<fwriter::EventContainer*> EventPool;
   //thread pool
+#ifdef linux
   std::vector<std::auto_ptr<std::thread>> writers;
+#endif
   std::vector<uint32> v_adlera_;
   std::vector<uint32> v_adlerb_;
 

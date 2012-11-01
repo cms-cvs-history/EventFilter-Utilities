@@ -1,4 +1,4 @@
-// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.1 2012/09/06 20:21:28 smorovic Exp $
+// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.2 2012/09/26 22:06:30 smorovic Exp $
 
 #include "MTRawEventFileWriterForBU.h"
 #include "FWCore/Utilities/interface/Adler32Calculator.h"
@@ -74,11 +74,6 @@ MTRawEventFileWriterForBU::MTRawEventFileWriterForBU(edm::ParameterSet const& ps
   //  initialize(ps.getUntrackedParameter<std::string>("fileName", "testFRDfile.dat"));
 }
 
-//MTRawEventFileWriterForBU::MTRawEventFileWriterForBU(std::string const& fileName,unsigned int numWriters)
-//{
-    //  initialize(fileName);
-    //numWriters_=numWriters;
-//}
 
 MTRawEventFileWriterForBU::~MTRawEventFileWriterForBU()
 {
@@ -141,6 +136,7 @@ void MTRawEventFileWriterForBU::initialize(std::string const& name)
 void MTRawEventFileWriterForBU::queueEvent(const char* buffer,unsigned long size)
 {
 
+#ifdef linux
   bool queuing = false;
   unsigned int freeId = 0xffff;
   while (!queuing) {
@@ -159,12 +155,14 @@ void MTRawEventFileWriterForBU::queueEvent(const char* buffer,unsigned long size
   queue_lock.lock();
   queuedIds.push_back(freeId);
   queue_lock.unlock();
+#endif
 }
 
 
 void MTRawEventFileWriterForBU::queueEvent(boost::shared_array<unsigned char>& msg)
 {
 
+#ifdef linux
   bool queuing = false;
   unsigned int freeId = 0xffff;
   while (!queuing) {
@@ -183,11 +181,13 @@ void MTRawEventFileWriterForBU::queueEvent(boost::shared_array<unsigned char>& m
   queue_lock.lock();
   queuedIds.push_back(freeId);
   queue_lock.unlock();
+#endif
 }
 
 
 void MTRawEventFileWriterForBU::dispatchThreads(std::string fileBase, unsigned int instances, std::string suffix)
 {
+#ifdef linux
   close_flag_=false;
   //v_adlera_(numWriters_,1);
   //v_adlerb_(numWriters_,0);
@@ -197,14 +197,15 @@ void MTRawEventFileWriterForBU::dispatchThreads(std::string fileBase, unsigned i
     instanceName << fileBase << "_" << i;
     if (suffix.size())
       instanceName << "." << suffix;
-
     writers.push_back(std::auto_ptr<std::thread>(new std::thread(&MTRawEventFileWriterForBU::threadRunner,this,instanceName.str(),i)));
   }
+#endif
 }
 
 
 void MTRawEventFileWriterForBU::threadRunner(std::string fileName,unsigned int instance)
 {
+#ifdef linux
   //new file..
   int outfd_ = open(fileName.c_str(), O_WRONLY | O_CREAT,  S_IRWXU);
   if(outfd_ == -1) {
@@ -265,7 +266,6 @@ void MTRawEventFileWriterForBU::threadRunner(std::string fileName,unsigned int i
     freeIds.push_back(qid);
     queue_lock.unlock();
   }
-
   //flush and close file
   ost_->flush();
   if (ost_->fail()) {
@@ -276,4 +276,5 @@ void MTRawEventFileWriterForBU::threadRunner(std::string fileName,unsigned int i
   }
   ost_.reset();
   if(outfd_!=0){ close(outfd_); outfd_=0;}
+#endif
 }
