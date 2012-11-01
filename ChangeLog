@@ -1,6 +1,6 @@
 2012-11-01 Srecko Morovic <srecko.morovic@cern.ch>
 
-	* tag V03-00-00
+	* tag V02-99-00
 	* forkFBEvF branch (61X only)
 	* adapted FedRawData input source to latest upstream input source
 	changes

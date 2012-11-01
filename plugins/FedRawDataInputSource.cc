@@ -123,13 +123,6 @@ bool FedRawDataInputSource::checkNextEvent()
 
 }
 
-//edm::EventPrincipal *
-//FedRawDataInputSource::read(edm::EventPrincipal& eventPrincipal)
-//{
-//  return &eventPrincipal;
-//}
-
-
 bool
 FedRawDataInputSource::eofReached() const
 {
