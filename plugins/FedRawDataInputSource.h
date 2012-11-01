@@ -25,7 +25,7 @@ public:
   
 protected:
   virtual bool checkNextEvent();
-  virtual edm::EventPrincipal * read(edm::EventPrincipal& eventPrincipal) {return &eventPrincipal;}
+  virtual edm::EventPrincipal * read(edm::EventPrincipal& eventPrincipal);
 
 private:
   virtual void preForkReleaseResources();
@@ -51,6 +51,7 @@ private:
   size_t fileIndex_;
   FILE* fileStream_;
   bool workDirCreated_;
+  edm::EventID eventID_;
 
 };
 

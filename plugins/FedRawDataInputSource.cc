@@ -11,6 +11,7 @@
 
 #include "DataFormats/Provenance/interface/LuminosityBlockAuxiliary.h"
 #include "DataFormats/Provenance/interface/EventAuxiliary.h"
+#include "DataFormats/Provenance/interface/EventID.h"
 
 #include "EventFilter/FEDInterface/interface/GlobalEventNumber.h"
 #include "EventFilter/Utilities/plugins/FedRawDataInputSource.h"
@@ -30,7 +31,8 @@ edm::RawInputSource(pset,desc),
 daqProvenanceHelper_(edm::TypeID(typeid(FEDRawDataCollection))),
 fileIndex_(0),
 fileStream_(0),
-workDirCreated_(false)
+workDirCreated_(false),
+eventID_()
 {
   findRunDir( pset.getUntrackedParameter<std::string>("rootDirectory") );
   daqProvenanceHelper_.daqInit(productRegistryUpdate());
@@ -107,21 +109,28 @@ bool FedRawDataInputSource::checkNextEvent()
 				    lsopentime, edm::Timestamp::invalidTimestamp());
     setLuminosityBlockAuxiliary(luminosityBlockAuxiliary);
   }
+  eventID_ = edm::EventID(eventHeader.runNumber, eventHeader.lumiSection, eventHeader.eventNumber);
 
-  std::auto_ptr<FEDRawDataCollection> rawData(new FEDRawDataCollection);
-  edm::Timestamp tstamp = fillFEDRawDataCollection(rawData);
-
-  edm::EventAuxiliary aux(
-      edm::EventID(eventHeader.runNumber, eventHeader.lumiSection, eventHeader.eventNumber),
-      processGUID(), tstamp, true, edm::EventAuxiliary::PhysicsTrigger);
-
-  edm::EventPrincipal * e = makeEvent(*eventPrincipalCache(), aux);
-
-  edm::WrapperOwningHolder edp(new edm::Wrapper<FEDRawDataCollection>(rawData), edm::Wrapper<FEDRawDataCollection>::getInterface());
-			      e->put(daqProvenanceHelper_.constBranchDescription_, edp, daqProvenanceHelper_.dummyProvenance_);
   return true;
 
 }
+
+
+edm::EventPrincipal*
+FedRawDataInputSource::read(edm::EventPrincipal& eventPrincipal)
+{
+  std::auto_ptr<FEDRawDataCollection> rawData(new FEDRawDataCollection);
+  edm::Timestamp tstamp = fillFEDRawDataCollection(rawData);
+
+  edm::EventAuxiliary aux(eventID_, processGUID(), tstamp, true, edm::EventAuxiliary::PhysicsTrigger);
+
+  edm::EventPrincipal * e = makeEvent(eventPrincipal, aux);
+
+  edm::WrapperOwningHolder edp(new edm::Wrapper<FEDRawDataCollection>(rawData), edm::Wrapper<FEDRawDataCollection>::getInterface());
+  e->put(daqProvenanceHelper_.constBranchDescription_, edp, daqProvenanceHelper_.dummyProvenance_);
+  return e;
+}
+
 
 bool
 FedRawDataInputSource::eofReached() const
