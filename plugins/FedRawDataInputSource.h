@@ -15,6 +15,7 @@ class FEDRawDataCollection;
 class InputSourceDescription;
 class ParameterSet;
 
+
 class FedRawDataInputSource : public edm::RawInputSource
 {
   
@@ -23,8 +24,8 @@ public:
   virtual ~FedRawDataInputSource();
   
 protected:
-  virtual edm::EventPrincipal * read();
-  //virtual std::auto_ptr<edm::Event> readOneEvent();
+  virtual bool checkNextEvent();
+  virtual edm::EventPrincipal * read(edm::EventPrincipal& eventPrincipal) {return &eventPrincipal;}
 
 private:
   virtual void preForkReleaseResources();

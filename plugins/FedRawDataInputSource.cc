@@ -8,8 +8,13 @@
 
 #include "DataFormats/FEDRawData/interface/FEDNumbering.h"
 #include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
+
+#include "DataFormats/Provenance/interface/LuminosityBlockAuxiliary.h"
+#include "DataFormats/Provenance/interface/EventAuxiliary.h"
+
 #include "EventFilter/FEDInterface/interface/GlobalEventNumber.h"
 #include "EventFilter/Utilities/plugins/FedRawDataInputSource.h"
+
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/InputSourceDescription.h"
 #include "FWCore/Framework/interface/InputSourceMacros.h"
@@ -69,10 +74,9 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
 
 }
 
-
-edm::EventPrincipal *
-FedRawDataInputSource::read()
+bool FedRawDataInputSource::checkNextEvent()
 {
+
   struct
   {
     uint32_t version;
@@ -86,22 +90,44 @@ FedRawDataInputSource::read()
     // run has ended
     if (workDirCreated_)
       boost::filesystem::remove(workingDirectory_);
-    return 0;
+    return false;
   }
+
   fread((void*)&eventHeader, sizeof(uint32_t), 4, fileStream_);
   assert( eventHeader.version == 2 );
+
+  if(!luminosityBlockAuxiliary() || luminosityBlockAuxiliary()->luminosityBlock() != eventHeader.lumiSection)
+  {
+    resetLuminosityBlockAuxiliary();
+    timeval tv;
+    gettimeofday(&tv,0);
+    edm::Timestamp lsopentime((unsigned long long)tv.tv_sec*1000000+(unsigned long long)tv.tv_usec);
+    edm::LuminosityBlockAuxiliary* luminosityBlockAuxiliary =
+	            new edm::LuminosityBlockAuxiliary(runAuxiliary()->run(),eventHeader.lumiSection,
+				    lsopentime, edm::Timestamp::invalidTimestamp());
+    setLuminosityBlockAuxiliary(luminosityBlockAuxiliary);
+  }
 
   std::auto_ptr<FEDRawDataCollection> rawData(new FEDRawDataCollection);
   edm::Timestamp tstamp = fillFEDRawDataCollection(rawData);
 
-  edm::EventPrincipal * event =
-    makeEvent(eventHeader.runNumber, eventHeader.lumiSection, eventHeader.eventNumber, tstamp);
- 
+  edm::EventAuxiliary aux(
+      edm::EventID(eventHeader.runNumber, eventHeader.lumiSection, eventHeader.eventNumber),
+      processGUID(), tstamp, true, edm::EventAuxiliary::PhysicsTrigger);
+
+  edm::EventPrincipal * e = makeEvent(*eventPrincipalCache(), aux);
+
   edm::WrapperOwningHolder edp(new edm::Wrapper<FEDRawDataCollection>(rawData), edm::Wrapper<FEDRawDataCollection>::getInterface());
-  event->put(daqProvenanceHelper_.constBranchDescription_, edp, daqProvenanceHelper_.dummyProvenance_);
- 
-  return event;
+			      e->put(daqProvenanceHelper_.constBranchDescription_, edp, daqProvenanceHelper_.dummyProvenance_);
+  return true;
+
 }
+
+//edm::EventPrincipal *
+//FedRawDataInputSource::read(edm::EventPrincipal& eventPrincipal)
+//{
+//  return &eventPrincipal;
+//}
 
 
 bool
