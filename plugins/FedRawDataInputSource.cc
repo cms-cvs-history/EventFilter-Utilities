@@ -125,7 +125,6 @@ FedRawDataInputSource::read(edm::EventPrincipal& eventPrincipal)
   edm::EventAuxiliary aux(eventID_, processGUID(), tstamp, true, edm::EventAuxiliary::PhysicsTrigger);
 
   edm::EventPrincipal * e = makeEvent(eventPrincipal, aux);
-  e->setLuminosityBlockPrincipal(luminosityBlockPrincipal());
 
   edm::WrapperOwningHolder edp(new edm::Wrapper<FEDRawDataCollection>(rawData), edm::Wrapper<FEDRawDataCollection>::getInterface());
   e->put(daqProvenanceHelper_.constBranchDescription_, edp, daqProvenanceHelper_.dummyProvenance_);
