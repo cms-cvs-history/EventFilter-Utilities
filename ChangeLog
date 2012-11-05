@@ -1,3 +1,8 @@
+2012-11-05 Srecko Morovic <srecko.morovic@cern.ch>
+
+	* tag V02-20-00-04
+	* removed setLumiBlock for event principal as it is now fixed upstream
+
 2012-11-02 Srecko Morovic <srecko.morovic@cern.ch>
 
 	* tag V02-20-00-03
