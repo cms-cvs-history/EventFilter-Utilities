@@ -1,4 +1,4 @@
-// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.2 2012/09/26 22:06:30 smorovic Exp $
+// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.3 2012/11/01 14:55:57 smorovic Exp $
 
 #include "MTRawEventFileWriterForBU.h"
 #include "FWCore/Utilities/interface/Adler32Calculator.h"
@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <assert.h>
 #include <boost/tokenizer.hpp>
 
 namespace fwriter {

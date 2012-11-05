@@ -232,7 +232,7 @@ bool RawEventSourceFromBU::openFile()
   if(lockstate < 0) return false;
 
   // check if we are not hitting the current ls file being written by BU
-  while((lockstate=edm::Service<evf::EvFDaqDirector>()->readBuLock())>=fileLumi_) 
+  while((lockstate=edm::Service<evf::EvFDaqDirector>()->readBuLock())>=(int)fileLumi_) 
     { 
       ::sleep(1); 
       std::cout << "waiting for file to be released by bu for ls " << fileLumi_ << std::endl;
