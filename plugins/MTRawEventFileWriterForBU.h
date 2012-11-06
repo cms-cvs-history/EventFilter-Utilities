@@ -1,7 +1,7 @@
 #ifndef EVFMTRAWEVENTFILEWRITERFORBU
 #define EVFMTRAWEVENTFILEWRITERFORBU
 
-// $Id: MTRawEventFileWriterForBU.h,v 1.1.2.2 2012/09/26 22:06:27 smorovic Exp $
+// $Id: MTRawEventFileWriterForBU.h,v 1.1.2.3 2012/11/01 14:55:58 smorovic Exp $
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "IOPool/Streamer/interface/FRDEventMessage.h"
@@ -57,8 +57,8 @@ class MTRawEventFileWriterForBU
 
   void finishThreads()
   {
-    close_flag_=true;
 #ifdef linux
+    close_flag_=true;
     for (auto w: writers) w->join();
     writers.clear();
 #endif
