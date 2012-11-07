@@ -17,19 +17,18 @@ process.MessageLogger = cms.Service("MessageLogger",
                                     )
 
 process.source = cms.Source("FedRawDataInputSource",
-		    #rootDirectory = cms.untracked.string(options.sourceDir)
 		        rootDirectory = cms.untracked.string("data")
 			)
 
-process.EvFDaqDirector = cms.Service("EvFDaqDirector",
-                                     hltBaseDir = cms.untracked.string("data/hlt"),
-                                     smBaseDir  = cms.untracked.string("data/sm"),
-                                     directorIsBu = cms.untracked.bool(True)
-                                     )
-process.EvFBuildingThrottle = cms.Service("EvFBuildingThrottle",
-                                          highWaterMark = cms.untracked.double(0.50),
-                                          lowWaterMark = cms.untracked.double(0.45)
-                                          )
+#process.EvFDaqDirector = cms.Service("EvFDaqDirector",
+#                                     hltBaseDir = cms.untracked.string("data/hlt"),
+#                                     smBaseDir  = cms.untracked.string("data/sm"),
+#                                     directorIsBu = cms.untracked.bool(True)
+#                                     )
+#process.EvFBuildingThrottle = cms.Service("EvFBuildingThrottle",
+#                                          highWaterMark = cms.untracked.double(0.50),
+#                                          lowWaterMark = cms.untracked.double(0.45)
+#                                          )
 process.a = cms.EDAnalyzer("ExceptionGenerator",
                            defaultAction = cms.untracked.int32(0),
                            defaultQualifier = cms.untracked.int32(10)
