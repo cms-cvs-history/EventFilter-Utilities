@@ -1,7 +1,7 @@
 #ifndef EVFRAWEVENTFILEWRITERFORBU
 #define EVFRAWEVENTFILEWRITERFORBU
 
-// $Id: RawEventFileWriterForBU.h,v 1.1.2.1 2012/09/04 12:49:24 meschi Exp $
+// $Id: RawEventFileWriterForBU.h,v 1.1.2.2 2012/09/26 22:07:10 smorovic Exp $
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "IOPool/Streamer/interface/FRDEventMessage.h"
@@ -31,7 +31,8 @@ class RawEventFileWriterForBU
 
   void start() {}
   void stop() {}
-  void initialize(std::string const& name);
+  void initialize(std::string const& destinationDir, std::string const& name, int ls);
+  void endOfLS(int ls);
   bool sharedMode() const {return false;}
  private:
 
@@ -40,6 +41,7 @@ class RawEventFileWriterForBU
   std::auto_ptr<std::ofstream> ost_;
   int outfd_;
   std::string fileName_;
+  std::string destinationDir_;
 
   uint32 adlera_;
   uint32 adlerb_;

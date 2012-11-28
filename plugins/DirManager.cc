@@ -1,4 +1,5 @@
 #include "DirManager.h"
+#include <iostream>
 
 namespace evf{
 
@@ -7,7 +8,10 @@ namespace evf{
       struct dirent *buf;
       int maxrun = 0;
       while((buf=readdir(dir))){
-	if(atoi(buf->d_name) > maxrun){maxrun = atoi(buf->d_name);}
+	std::string dirnameNum = buf->d_name;
+	if (dirnameNum.find("run")!=std::string::npos)
+	  dirnameNum=dirnameNum.substr(3,std::string::npos);
+	if(atoi(dirnameNum.c_str()) > maxrun){maxrun = atoi(dirnameNum.c_str());}
       }
       closedir(dir);
       return maxrun;
@@ -19,7 +23,10 @@ namespace evf{
     struct dirent *buf;
     int maxrun = 0;
     while((buf=readdir(dir))){
-      if(atoi(buf->d_name) > maxrun){tmpdir = buf->d_name; maxrun = atoi(buf->d_name);}
+      std::string dirnameNum = buf->d_name;
+      if (dirnameNum.find("run")!=std::string::npos)
+        dirnameNum=dirnameNum.substr(3,std::string::npos);
+      if(atoi(dirnameNum.c_str()) > maxrun){tmpdir = buf->d_name; maxrun = atoi(dirnameNum.c_str());}
     }
     closedir(dir);
     retval += tmpdir;

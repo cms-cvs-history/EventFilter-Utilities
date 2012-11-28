@@ -1,4 +1,4 @@
-// $Id: FRDEventFileWriter.cc,v 1.3 2010/02/18 09:19:02 mommsen Exp $
+// $Id: RawEventFileWriterForBU.cc,v 1.1.2.1 2012/09/04 12:49:24 meschi Exp $
 
 #include "RawEventFileWriterForBU.h"
 #include "FWCore/Utilities/interface/Adler32Calculator.h"
@@ -80,10 +80,15 @@ void RawEventFileWriterForBU::doOutputEventFragment(unsigned char* dataPtr,
   cms::Adler32((const char*) dataPtr, dataSize, adlera_, adlerb_);
 }
 
-void RawEventFileWriterForBU::initialize(std::string const& name)
+void RawEventFileWriterForBU::initialize(std::string const& destinationDir, std::string const& name, int ls)
 {
+  std::string oldFileName = fileName_;
   fileName_ = name;
-  if(outfd_!=0){ close(outfd_); outfd_=0;}
+  destinationDir_ = destinationDir;
+  if(outfd_!=0){
+    close(outfd_);
+    outfd_=0;
+  }
   outfd_ = open(fileName_.c_str(), O_WRONLY | O_CREAT,  S_IRWXU);
   if(outfd_ == -1) {
     throw cms::Exception("RawEventFileWriterForBU","initialize")
@@ -91,6 +96,10 @@ void RawEventFileWriterForBU::initialize(std::string const& name)
       << ": " << strerror(errno) << "\n";
   }
   ost_.reset(new std::ofstream(name.c_str(), std::ios_base::binary | std::ios_base::out));
+ 
+  //move old file to done directory 
+  if (!oldFileName.empty()) 
+    rename(oldFileName.c_str(),destinationDir_.c_str());
 
   if (!ost_->is_open()) {
     throw cms::Exception("RawEventFileWriterForBU","initialize")
@@ -100,3 +109,8 @@ void RawEventFileWriterForBU::initialize(std::string const& name)
   adlera_ = 1;
   adlerb_ = 0;
 }
+
+void RawEventFileWriterForBU::endOfLS(int ls)
+{
+}
+

@@ -32,6 +32,7 @@ namespace evf{
       std::string &baseDir(){return base_dir_;}
       std::string &smBaseDir(){return sm_base_dir_;}
       std::string &buBaseDir(){return bu_base_dir_;}
+      std::string &buBaseOpenDir(){return bu_base_open_dir_;}
       std::string &monitorBaseDir(){return monitor_base_dir_;}
 
       std::string findHighestRunDir(){
@@ -41,6 +42,7 @@ namespace evf{
 	return dirManager_.findHighestRun();
       }
       std::string getFileForLumi(unsigned int ls);
+      std::string getWorkdirFileForLumi(unsigned int ls);
       std::string getPathForFU();
       void removeFile(unsigned int ls);
       void removeFile(std::string &);
@@ -58,6 +60,7 @@ namespace evf{
       std::string base_dir_;
       std::string run_dir_;
       std::string bu_base_dir_;
+      std::string bu_base_open_dir_;
       std::string sm_base_dir_;
       std::string monitor_base_dir_;
       bool directorBu_;

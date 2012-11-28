@@ -1,7 +1,7 @@
 #ifndef EVFMTRAWEVENTFILEWRITERFORBU
 #define EVFMTRAWEVENTFILEWRITERFORBU
 
-// $Id: MTRawEventFileWriterForBU.h,v 1.1.2.3 2012/11/01 14:55:58 smorovic Exp $
+// $Id: MTRawEventFileWriterForBU.h,v 1.1.2.4 2012/11/06 10:52:42 mommsen Exp $
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "IOPool/Streamer/interface/FRDEventMessage.h"
@@ -45,11 +45,14 @@ class MTRawEventFileWriterForBU
   void stop() {
     finishThreads();
   }
-  void initialize(std::string const& name);
+  void initialize(std::string const& destinationDir, std::string const& name, int ls);
+  void endOfLS(int ls);
   bool sharedMode() const {return sharedMode_;}
  private:
 
   std::string fileName_;
+  std::string destinationDir_;
+  std::string lumiSectionSubDir_;
 
   inline void queueEvent(const char* buffer,unsigned long size);
   inline void queueEvent(boost::shared_array<unsigned char> & msg);
@@ -71,6 +74,9 @@ class MTRawEventFileWriterForBU
   unsigned int numWriters_;
   unsigned int eventBufferSize_;
   bool sharedMode_;
+  bool lumiSubdirectoriesMode_;
+  bool debug_;
+  int finishAfterLS_;
 #ifdef linux
   std::atomic<bool> close_flag_;
   std::mutex queue_lock;

@@ -1,10 +1,11 @@
-// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.3 2012/11/01 14:55:57 smorovic Exp $
+// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.4 2012/11/05 23:05:44 smorovic Exp $
 
 #include "MTRawEventFileWriterForBU.h"
 #include "FWCore/Utilities/interface/Adler32Calculator.h"
 #include "FWCore/Utilities/interface/Exception.h"
 
 #include <iostream>
+#include <iomanip>
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
@@ -62,8 +63,10 @@ MTRawEventFileWriterForBU::MTRawEventFileWriterForBU(edm::ParameterSet const& ps
   numWriters_(ps.getUntrackedParameter<unsigned int>("numWriters",1))
   ,eventBufferSize_(ps.getUntrackedParameter<unsigned int>("eventBufferSize",30))
   ,sharedMode_(ps.getUntrackedParameter<bool>("sharedMode",true))
+  ,lumiSubdirectoriesMode_(ps.getUntrackedParameter<bool>("lumiSubdirectoriesMode",true))
+  ,debug_(ps.getUntrackedParameter<bool>("debug",false))
+  //,finishAfterLS_(ps.getUntrackedParameter<int>,-1)
 {
-  if (sharedMode_) std::cout << "Using shared mode (zero copy) for output"<<std::endl;
   for (unsigned int i=0;i<eventBufferSize_;i++) {
     if (!sharedMode_)
       EventPool.push_back(new fwriter::EventContainer(1048576));
@@ -72,7 +75,6 @@ MTRawEventFileWriterForBU::MTRawEventFileWriterForBU(edm::ParameterSet const& ps
     freeIds.push_back(i);
   }
   fileHeader_= new unsigned char[1024*1024]; 
-  //  initialize(ps.getUntrackedParameter<std::string>("fileName", "testFRDfile.dat"));
 }
 
 
@@ -117,8 +119,17 @@ void MTRawEventFileWriterForBU::doOutputEventFragment(unsigned char* dataPtr,
   //cms::Adler32((const char*) dataPtr, dataSize, adlera_, adlerb_);
 }
 
-void MTRawEventFileWriterForBU::initialize(std::string const& name)
+void MTRawEventFileWriterForBU::initialize(std::string const& destinationDir, std::string const& name, int ls)
 {
+
+  destinationDir_ = destinationDir+"/";
+  if (lumiSubdirectoriesMode_) {
+    std::ostringstream lsdir;
+    lsdir << "ls"  << std::setfill('0') << std::setw(6) << ls << "/";
+    lumiSectionSubDir_ = lsdir.str();
+    mkdir((destinationDir_+lumiSectionSubDir_).c_str(),0755);
+  }
+  else lumiSectionSubDir_="";
 
   std::string fileBase=name;
   std::string fileSuffix;
@@ -132,6 +143,16 @@ void MTRawEventFileWriterForBU::initialize(std::string const& name)
   }
   finishThreads();
   dispatchThreads(fileBase,numWriters_,fileSuffix);
+}
+
+void MTRawEventFileWriterForBU::endOfLS(int ls)
+{
+  finishThreads();
+  //writing empty EoLS file (will be filled with information)
+  std::ostringstream ostr;
+  ostr << destinationDir_ << "/EoLS_" << std::setfill('0') << std::setw(6) << ls << ".json"; 
+  int outfd_ = open(ostr.str().c_str(), O_WRONLY | O_CREAT,  S_IRWXU);
+  if(outfd_!=0){ close(outfd_); outfd_=0;}
 }
 
 void MTRawEventFileWriterForBU::queueEvent(const char* buffer,unsigned long size)
@@ -208,6 +229,8 @@ void MTRawEventFileWriterForBU::threadRunner(std::string fileName,unsigned int i
 {
 #ifdef linux
   //new file..
+  if (debug_)
+    std::cout << "opening file for writing " << fileName.c_str() << std::endl;
   int outfd_ = open(fileName.c_str(), O_WRONLY | O_CREAT,  S_IRWXU);
   if(outfd_ == -1) {
     throw cms::Exception("RawEventFileWriterForBU","initialize")
@@ -277,5 +300,12 @@ void MTRawEventFileWriterForBU::threadRunner(std::string fileName,unsigned int i
   }
   ost_.reset();
   if(outfd_!=0){ close(outfd_); outfd_=0;}
+  
+  //move file to destination dir
+  int fretval = rename(fileName.c_str(),(destinationDir_+lumiSectionSubDir_+fileName.substr(fileName.rfind("/"))).c_str());
+  if (debug_)
+    std::cout << " tried move " << fileName << " to " << destinationDir_+lumiSectionSubDir_
+              << " status "  << fretval << " errno " << strerror(errno) << std::endl;
+
 #endif
 }

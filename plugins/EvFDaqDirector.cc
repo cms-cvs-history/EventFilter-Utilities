@@ -50,7 +50,7 @@ namespace evf{
     
     
     // check if run dir exists. 
-    ost<<base_dir_ << "/" << id.run();
+    ost<<base_dir_ << "/run" << id.run();
     run_dir_= ost.str();
     int retval = mkdir(run_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     if(retval!=0 && errno !=EEXIST)
@@ -64,36 +64,49 @@ namespace evf{
       throw cms::Exception("DaqDirector") << " Error checking run dir " << run_dir_ << " this is not the highest run "
 					  << dirManager_.findHighestRunDir() << "\n";
     }
-    //make or find bu base dir,
-    ost<<base_dir_ << "/" << id.run() << "/" << bu_base_dir_;
-    bu_base_dir_= ost.str();
-    retval = mkdir(bu_base_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    //make or find bu base dir
+    if (bu_base_dir_.empty()) {
+      ost<<base_dir_ << "/run" << id.run();
+      bu_base_dir_= ost.str();
+    }
+    else {
+      ost<<base_dir_ << "/run" << id.run() << "/" << bu_base_dir_;
+      bu_base_dir_= ost.str();
+      retval = mkdir(bu_base_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+      if(retval!=0 && errno !=EEXIST)
+        {
+	  throw cms::Exception("DaqDirector") << " Error creating bu dir " << bu_base_dir_ << " mkdir error:" << strerror(errno) << "\n";
+        }
+    }
+    ost << "/open";
+    bu_base_open_dir_ = ost.str();
+    retval = mkdir(bu_base_open_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     if(retval!=0 && errno !=EEXIST)
       {
-	throw cms::Exception("DaqDirector") << " Error creating bu dir " << bu_base_dir_ << " mkdir error:" << strerror(errno) << "\n";
+	throw cms::Exception("DaqDirector") << " Error creating bu dir " << bu_base_open_dir_ << " mkdir error:" << strerror(errno) << "\n";
       }
     ost.clear();
     ost.str("");
     
     //make or find sm base dir
-    retval = mkdir(sm_base_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    if(retval!=0 && errno !=EEXIST)
-      {
-	throw cms::Exception("DaqDirector") << " Error creating sm dir " << sm_base_dir_ << " mkdir error:" << strerror(errno) << "\n";
-      }
-    //make run dir for sm
-    ost<< sm_base_dir_ << "/" << id.run();
-    sm_base_dir_= ost.str();
-    retval = mkdir(sm_base_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    if(retval!=0 && errno !=EEXIST)
-      {
-	throw cms::Exception("DaqDirector") << " Error creating sm dir " << sm_base_dir_ << " mkdir error:" << strerror(errno) << "\n";
-      }
-    ost.clear();
-    ost.str("");
+    //retval = mkdir(sm_base_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    //if(retval!=0 && errno !=EEXIST)
+      //{
+	//throw cms::Exception("DaqDirector") << " Error creating sm dir " << sm_base_dir_ << " mkdir error:" << strerror(errno) << "\n";
+      //}
+    ////make run dir for sm
+    //ost<< sm_base_dir_ << "/" << id.run();
+    //sm_base_dir_= ost.str();
+    //retval = mkdir(sm_base_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    //if(retval!=0 && errno !=EEXIST)
+      //{
+	//throw cms::Exception("DaqDirector") << " Error creating sm dir " << sm_base_dir_ << " mkdir error:" << strerror(errno) << "\n";
+      //}
+    //ost.clear();
+    //ost.str("");
     
     //make or find monitor base dir
-    ost<<base_dir_ << "/" << id.run() << "/" << monitor_base_dir_;
+    ost<<base_dir_ << "/run" << id.run() << "/" << monitor_base_dir_;
     monitor_base_dir_= ost.str();
     retval = mkdir(monitor_base_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     if(retval!=0 && errno !=EEXIST)
@@ -149,13 +162,23 @@ namespace evf{
 	  std::cout << "Error creating fu read/write lock stream " << strerror(errno) << std::endl;
 
       }
+    std::cout << "DaqDirector - preBeginRun success" << std::endl;
   }
  
   std::string EvFDaqDirector::getFileForLumi(unsigned int ls){
-    std::string retval = bu_base_dir_;
+    std::string retval = bu_base_open_dir_;
     retval += "/ls";
     std::ostringstream ost;
-    ost << std::setfill('0') << std::setw(6) << ls << ".dat";
+    ost << std::setfill('0') << std::setw(6) << ls << ".raw";
+    retval += ost.str();
+    return retval;
+  }
+
+  std::string EvFDaqDirector::getWorkdirFileForLumi(unsigned int ls){
+    std::string retval = bu_base_open_dir_;
+    retval += "/ls";
+    std::ostringstream ost;
+    ost << std::setfill('0') << std::setw(6) << ls << ".raw";
     retval += ost.str();
     return retval;
   }

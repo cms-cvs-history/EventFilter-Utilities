@@ -134,8 +134,9 @@ void RawEventOutputModuleForBU<Consumer>::endRun(edm::RunPrincipal const&)
 
 template <class Consumer>
 void RawEventOutputModuleForBU<Consumer>::beginLuminosityBlock(edm::LuminosityBlockPrincipal const& ls){
-  std::string filename = edm::Service<evf::EvFDaqDirector>()->getFileForLumi( ls.id().luminosityBlock());
-  templateConsumer_->initialize(filename);  
+  std::string filename = edm::Service<evf::EvFDaqDirector>()->getWorkdirFileForLumi( ls.id().luminosityBlock());
+  std::string destinationDir = edm::Service<evf::EvFDaqDirector>()->buBaseDir();
+  templateConsumer_->initialize(destinationDir,filename,ls.id().luminosityBlock());
   edm::Service<evf::EvFDaqDirector>()->updateBuLock(ls.id().luminosityBlock()+1);
   if(!firstLumi_){
     timeval now;
@@ -159,5 +160,6 @@ template <class Consumer>
 void RawEventOutputModuleForBU<Consumer>::endLuminosityBlock(edm::LuminosityBlockPrincipal const& ls){
 
   //  templateConsumer_->touchlock(ls.id().luminosityBlock(),basedir);
+  templateConsumer_->endOfLS(ls.id().luminosityBlock());
 }
 #endif
