@@ -45,6 +45,7 @@ private:
 
   boost::filesystem::path runDirectory_;
   edm::RunNumber_t runNumber_;
+  uint32_t formatVersion_;
 
   boost::filesystem::path workingDirectory_;
   boost::filesystem::path openFile_;

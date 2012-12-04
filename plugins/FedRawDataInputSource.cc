@@ -22,6 +22,8 @@
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 
+#include "IOPool/Streamer/interface/FRDEventMessage.h"
+
 #include "interface/shared/fed_header.h"
 #include "interface/shared/fed_trailer.h"
 
@@ -29,6 +31,7 @@
 FedRawDataInputSource::FedRawDataInputSource(edm::ParameterSet const& pset, edm::InputSourceDescription const& desc) :
 edm::RawInputSource(pset,desc),
 daqProvenanceHelper_(edm::TypeID(typeid(FEDRawDataCollection))),
+formatVersion_(0),
 fileIndex_(0),
 fileStream_(0),
 workDirCreated_(false),
@@ -78,15 +81,6 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
 
 bool FedRawDataInputSource::checkNextEvent()
 {
-
-  struct
-  {
-    uint32_t version;
-    uint32_t runNumber;
-    uint32_t lumiSection;
-    uint32_t eventNumber;
-  } eventHeader;
-
   if ( eofReached() && !openNextFile() )
   {
     // run has ended
@@ -95,21 +89,23 @@ bool FedRawDataInputSource::checkNextEvent()
     return false;
   }
 
+  FRDEventHeader_V2 eventHeader;
   fread((void*)&eventHeader, sizeof(uint32_t), 4, fileStream_);
-  assert( eventHeader.version == 2 );
+  assert( eventHeader.version_ > 1);
+  formatVersion_ = eventHeader.version_;
 
-  if(!luminosityBlockAuxiliary() || luminosityBlockAuxiliary()->luminosityBlock() != eventHeader.lumiSection)
+  if(!luminosityBlockAuxiliary() || luminosityBlockAuxiliary()->luminosityBlock() != eventHeader.lumi_)
   {
     resetLuminosityBlockAuxiliary();
     timeval tv;
     gettimeofday(&tv,0);
     edm::Timestamp lsopentime((unsigned long long)tv.tv_sec*1000000+(unsigned long long)tv.tv_usec);
     edm::LuminosityBlockAuxiliary* luminosityBlockAuxiliary =
-	            new edm::LuminosityBlockAuxiliary(runAuxiliary()->run(),eventHeader.lumiSection,
+	            new edm::LuminosityBlockAuxiliary(runAuxiliary()->run(),eventHeader.lumi_,
 				    lsopentime, edm::Timestamp::invalidTimestamp());
     setLuminosityBlockAuxiliary(luminosityBlockAuxiliary);
   }
-  eventID_ = edm::EventID(eventHeader.runNumber, eventHeader.lumiSection, eventHeader.eventNumber);
+  eventID_ = edm::EventID(eventHeader.run_, eventHeader.lumi_, eventHeader.event_);
   setEventCached();
   return true;
 
@@ -149,27 +145,36 @@ edm::Timestamp
 FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollection>& rawData)
 {
   edm::Timestamp tstamp;
-  size_t totalEventSize = 0;
+  uint32_t eventSize = 0;
+  uint32_t paddingSize = 0;
+  if ( formatVersion_ >= 3 )
+  {
+    fread((void*)&eventSize, sizeof(uint32_t), 1, fileStream_);
+    fread((void*)&paddingSize, sizeof(uint32_t), 1, fileStream_);
+  }
+
   uint32_t fedSizes[1024];
   fread((void*)fedSizes, sizeof(uint32_t), 1024, fileStream_);
-  for (unsigned int i=0;i<1024;i++) {
-    totalEventSize += fedSizes[i];
+  if ( formatVersion_ < 3 )
+  {
+    for (unsigned int i=0;i<1024;i++)
+      eventSize += fedSizes[i];
   }
   
   unsigned int gtpevmsize = fedSizes[FEDNumbering::MINTriggerGTPFEDID];
   if ( gtpevmsize > 0 )
     evf::evtn::evm_board_setformat(gtpevmsize);
   
-  char* event = new char[totalEventSize];
-  fread((void*)event, totalEventSize, 1, fileStream_);
+  char* event = new char[eventSize];
+  fread((void*)event, eventSize, 1, fileStream_);
   
-  while ( totalEventSize>0 )
+  while ( eventSize>0 )
   {
-    totalEventSize -= sizeof(fedt_t);
-    const fedt_t* fedTrailer = (fedt_t*)(event+totalEventSize);
+    eventSize -= sizeof(fedt_t);
+    const fedt_t* fedTrailer = (fedt_t*)(event+eventSize);
     const uint32_t fedSize = FED_EVSZ_EXTRACT(fedTrailer->eventsize) << 3; //trailer length counts in 8 bytes
-    totalEventSize -= (fedSize - sizeof(fedh_t));
-    const fedh_t* fedHeader = (fedh_t *)(event+totalEventSize);
+    eventSize -= (fedSize - sizeof(fedh_t));
+    const fedh_t* fedHeader = (fedh_t *)(event+eventSize);
     const uint16_t fedId = FED_SOID_EXTRACT(fedHeader->sourceid);
     if ( fedId == FEDNumbering::MINTriggerGTPFEDID )
     {
@@ -179,8 +184,10 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
     }
     FEDRawData& fedData=rawData->FEDData(fedId);
     fedData.resize(fedSize);
-    memcpy(fedData.data(),event+totalEventSize,fedSize);
+    memcpy(fedData.data(),event+eventSize,fedSize);
   }
+  assert( eventSize == 0 );
+  fseek(fileStream_, paddingSize, SEEK_CUR);
   delete event;
   return tstamp;
 }
