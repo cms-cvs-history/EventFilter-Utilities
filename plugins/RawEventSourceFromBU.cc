@@ -15,7 +15,7 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
 
-#include "FWCore/Sources/interface/ExternalInputSource.h"
+#include "FWCore/Sources/interface/ProducerSourceFromFiles.h"
 
 #include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
 #include "DataFormats/FEDRawData/interface/FEDNumbering.h"
@@ -41,7 +41,7 @@ namespace errorstreamsource{
 }
 
 
-class RawEventSourceFromBU : public edm::ExternalInputSource
+class RawEventSourceFromBU : public edm::ProducerSourceFromFiles
 {
 public:
   // construction/destruction
@@ -51,9 +51,9 @@ public:
   
 private:
   // member functions
-  void setRunAndEventInfo();
-  bool produce(edm::Event& e);
-  
+  virtual bool setRunAndEventInfo(edm::EventID& id, edm::TimeValue_t& theTime);
+  virtual void produce(edm::Event& e);
+
   void beginJob();
   void beginRun(edm::Run& r){
     std::cout << "RawEventSourceFromBU: begin run " << std::endl;
@@ -73,11 +73,8 @@ private:
   std::string runDir_;
   unsigned int fileLumi_;
   std::ifstream fin_;
+  std::auto_ptr<FEDRawDataCollection> result_;
 };
-
-
-using namespace std;
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // construction/destruction
@@ -86,7 +83,7 @@ using namespace std;
 //______________________________________________________________________________
 RawEventSourceFromBU::RawEventSourceFromBU(edm::ParameterSet const& pset,
 				     edm::InputSourceDescription const& desc)
-  : ExternalInputSource(pset,desc)
+: ProducerSourceFromFiles(pset,desc,true)
   , fileLumi_(0)
 {
   produces<FEDRawDataCollection>();
@@ -115,7 +112,7 @@ void RawEventSourceFromBU::beginJob()
 
 
 //______________________________________________________________________________
-void RawEventSourceFromBU::setRunAndEventInfo()
+bool RawEventSourceFromBU::setRunAndEventInfo(edm::EventID& id, edm::TimeValue_t& theTime)
 {
   //  std::cout << "Set run and event info " << std::endl;
   uint32_t version(1);
@@ -124,9 +121,8 @@ void RawEventSourceFromBU::setRunAndEventInfo()
   uint32_t evtNumber(0);
   bool status;
   while(!fin_.is_open()){
-    if(!openFile()){ 
-      setEventNumber(0);
-      return;
+    if(!openFile()){
+      return false;
     }
   }
 
@@ -145,7 +141,7 @@ void RawEventSourceFromBU::setRunAndEventInfo()
     fin_.clear();
     if(fileLumi_>0)
       edm::Service<evf::EvFDaqDirector>()->removeFile(fileLumi_);
-    return setRunAndEventInfo();
+    return setRunAndEventInfo(id, theTime);
   }
   if(runNumber != run()) throw cms::Exception("LogicError")<< "Run number from file - " << runNumber
 							   << " does not correspond to the one from directory " << run()
@@ -153,20 +149,12 @@ void RawEventSourceFromBU::setRunAndEventInfo()
   if(lumiNumber != (fileLumi_)) throw cms::Exception("LogicError")<< "Ls number from readin file - " << lumiNumber 
 							   << " does not correspond to the one from directory " << fileLumi_-1
 							   << "\n";
-  setLuminosityBlockNumber_t(lumiNumber);
-  setEventNumber(evtNumber);
-}
+  id = edm::EventID(runNumber, lumiNumber, evtNumber);
 
-
-//______________________________________________________________________________
-bool RawEventSourceFromBU::produce(edm::Event& e)
-{
-  //  std::cout << "produce " << std::endl;
   unsigned int totalEventSize = 0;
-  if (!fin_.is_open()) return false;
   
-  auto_ptr<FEDRawDataCollection> result(new FEDRawDataCollection());
-  
+  result_.reset(new FEDRawDataCollection());
+
   uint32_t fedSize[1024];
   fin_.read((char*)fedSize,1024*sizeof(uint32_t));
   for (unsigned int i=0;i<1024;i++) {
@@ -193,16 +181,23 @@ bool RawEventSourceFromBU::produce(edm::Event& e)
       unsigned int gpsh = evf::evtn::getgpshigh((unsigned char*)fedh);
       edm::TimeValue_t time = gpsh;
       time = (time << 32) + gpsl;
-      setTime(time);
+      theTime = time;
     }
-    FEDRawData& fedData=result->FEDData(soid);
+    FEDRawData& fedData=result_->FEDData(soid);
     fedData.resize(fedsize);
     memcpy(fedData.data(),event+totalEventSize,fedsize);
     //    std::cout << "now totalEventSize = " << totalEventSize << std::endl;
   }
-  e.put(result);
   delete[] event;
   return true;
+}
+
+
+//______________________________________________________________________________
+void RawEventSourceFromBU::produce(edm::Event& e)
+{
+  //  std::cout << "produce " << std::endl;
+  e.put(result_);
 }
 
 
