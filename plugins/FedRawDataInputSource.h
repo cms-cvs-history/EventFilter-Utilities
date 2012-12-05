@@ -37,13 +37,15 @@ private:
   edm::Timestamp fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollection>&);
   bool openNextFile();
   void openFile(boost::filesystem::path const&);
-  bool grabNextFile(boost::filesystem::path const&);
+  bool searchForNextFile(boost::filesystem::path const&);
+  bool grabNextFile(boost::filesystem::path const&,boost::filesystem::path const&);
   bool eofReached() const;
   bool runEnded() const;
 
   edm::DaqProvenanceHelper daqProvenanceHelper_;
 
   boost::filesystem::path runDirectory_;
+  boost::filesystem::path runBaseDirectory_;
   edm::RunNumber_t runNumber_;
   uint32_t formatVersion_;
 
@@ -54,6 +56,9 @@ private:
   bool workDirCreated_;
   edm::EventID eventID_;
 
+  bool newLumiSection_;
+  int lastOpenedLumi_;
+  boost::filesystem::path currentDataDir_;
 };
 
 #endif // EventFilter_Utilities_FedRawDataInputSource_h

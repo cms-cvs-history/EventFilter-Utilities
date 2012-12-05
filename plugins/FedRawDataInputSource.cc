@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <vector>
+#include <boost/algorithm/string.hpp>
 
 #include "DataFormats/FEDRawData/interface/FEDNumbering.h"
 #include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
@@ -21,6 +22,7 @@
 #include "FWCore/Framework/interface/InputSourceMacros.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
+#include "FWCore/Utilities/interface/UnixSignalHandlers.h"
 
 #include "IOPool/Streamer/interface/FRDEventMessage.h"
 
@@ -35,7 +37,8 @@ formatVersion_(0),
 fileIndex_(0),
 fileStream_(0),
 workDirCreated_(false),
-eventID_()
+eventID_(),
+lastOpenedLumi_(0)
 {
   findRunDir( pset.getUntrackedParameter<std::string>("rootDirectory") );
   daqProvenanceHelper_.daqInit(productRegistryUpdate());
@@ -60,7 +63,6 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
   std::vector<boost::filesystem::path> dirs;
   boost::filesystem::directory_iterator itEnd;
   do {
-    usleep(500000);
     for ( boost::filesystem::directory_iterator it(rootDirectory);
           it != itEnd; ++it)
     {
@@ -68,12 +70,24 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
         std::string::npos != it->path().string().find("run") )
         dirs.push_back(*it);
     }
+    if (dirs.empty()) usleep(500000);
   } while ( dirs.empty() );
   std::sort(dirs.begin(), dirs.end());
   runDirectory_ = dirs.back();
+  runBaseDirectory_ = dirs.back();
 
   std::string rnString = runDirectory_.string().substr(runDirectory_.string().find("run")+3);
   runNumber_ = atoi(rnString.c_str());
+
+  //find "bu" subdir and take files from there, if present
+  for ( boost::filesystem::directory_iterator it(runDirectory_);it != itEnd; ++it)
+  {
+    if ( boost::filesystem::is_directory(it->path()) && boost::algorithm::ends_with(it->path().string(),"/bu"))
+    { 
+      runDirectory_=*it;
+      break;
+    }
+  }
 
   edm::LogInfo("FedRawDataInputSource") << "Getting data from " << runDirectory_.string();
 
@@ -81,32 +95,53 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
 
 bool FedRawDataInputSource::checkNextEvent()
 {
+
   if ( eofReached() && !openNextFile() )
   {
     // run has ended
+    resetLuminosityBlockAuxiliary();//todo:way to notify of run end?
     if (workDirCreated_)
       boost::filesystem::remove(workingDirectory_);
     return false;
   }
 
-  FRDEventHeader_V2 eventHeader;
-  fread((void*)&eventHeader, sizeof(uint32_t), 4, fileStream_);
-  assert( eventHeader.version_ > 1);
-  formatVersion_ = eventHeader.version_;
-
-  if(!luminosityBlockAuxiliary() || luminosityBlockAuxiliary()->luminosityBlock() != eventHeader.lumi_)
+  //same lumi, or new lumi detected in file (old mode)
+  if (!newLumiSection_)
   {
+    FRDEventHeader_V2 eventHeader;
+    fread((void*)&eventHeader, sizeof(uint32_t), 4, fileStream_);
+    assert( eventHeader.version_ > 1);
+    formatVersion_ = eventHeader.version_;
+
+    //get new lumi from file header
+    if(!luminosityBlockAuxiliary() || luminosityBlockAuxiliary()->luminosityBlock() != eventHeader.lumi_)
+    {
+      resetLuminosityBlockAuxiliary();
+      timeval tv;
+      gettimeofday(&tv,0);
+      edm::Timestamp lsopentime((unsigned long long)tv.tv_sec*1000000+(unsigned long long)tv.tv_usec);
+      edm::LuminosityBlockAuxiliary* luminosityBlockAuxiliary =
+	new edm::LuminosityBlockAuxiliary(runAuxiliary()->run(),eventHeader.lumi_,
+	    lsopentime, edm::Timestamp::invalidTimestamp());
+      setLuminosityBlockAuxiliary(luminosityBlockAuxiliary);
+    }
+    eventID_ = edm::EventID(eventHeader.run_, eventHeader.lumi_, eventHeader.event_);
+    lastOpenedLumi_=eventHeader.lumi_;
+    setEventCached();
+  }
+  else
+  {
+    //new lumi from directory name
     resetLuminosityBlockAuxiliary();
     timeval tv;
     gettimeofday(&tv,0);
     edm::Timestamp lsopentime((unsigned long long)tv.tv_sec*1000000+(unsigned long long)tv.tv_usec);
-    edm::LuminosityBlockAuxiliary* luminosityBlockAuxiliary =
-	            new edm::LuminosityBlockAuxiliary(runAuxiliary()->run(),eventHeader.lumi_,
-				    lsopentime, edm::Timestamp::invalidTimestamp());
+    edm::LuminosityBlockAuxiliary* luminosityBlockAuxiliary = 
+      new edm::LuminosityBlockAuxiliary(runAuxiliary()->run(), lastOpenedLumi_,
+	  lsopentime, edm::Timestamp::invalidTimestamp());
     setLuminosityBlockAuxiliary(luminosityBlockAuxiliary);
+    //newLumiSection_=false;
   }
-  eventID_ = edm::EventID(eventHeader.run_, eventHeader.lumi_, eventHeader.event_);
-  setEventCached();
   return true;
 
 }
@@ -152,7 +187,6 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
     fread((void*)&eventSize, sizeof(uint32_t), 1, fileStream_);
     fread((void*)&paddingSize, sizeof(uint32_t), 1, fileStream_);
   }
-
   uint32_t fedSizes[1024];
   fread((void*)fedSizes, sizeof(uint32_t), 1024, fileStream_);
   if ( formatVersion_ < 3 )
@@ -202,11 +236,16 @@ FedRawDataInputSource::openNextFile()
   fileName << std::setfill('0') << std::setw(16) << fileIndex_++ << ".raw";
   nextFile /= fileName.str();
 
-  openFile(nextFile);
+  openFile(nextFile);//closes previous file
+  searchForNextFile(nextFile);
   
-  while ( !grabNextFile(nextFile) ) ::usleep(1000);
+  //close file and end run in case of received shutdown signal
+  if (edm::shutdown_flag) {
+    if (fileStream_ != 0) openFile(nextFile);
+    return false;
+  }
 
-  return ( fileStream_ != 0 );
+  return ( fileStream_ != 0 || newLumiSection_ );
 }
 
 
@@ -229,16 +268,90 @@ FedRawDataInputSource::openFile(boost::filesystem::path const& nextFile)
   std::cout << " tried to open file.. " <<  nextFile << " fd:" << fileDescriptor << std::endl;
 }
 
+bool
+FedRawDataInputSource::searchForNextFile(boost::filesystem::path const& nextFile)
+{
+  newLumiSection_=false;
+  do
+  {
+    //try to open file from same directory (same lumi?)
+    if (lastOpenedLumi_>0 && !currentDataDir_.string().empty())
+      if (grabNextFile(currentDataDir_,nextFile)) return true;
+
+    //no file, check for new lumi dir
+    boost::filesystem::directory_iterator itEnd;
+    std::vector<boost::filesystem::path> lsdirs;
+    for ( boost::filesystem::directory_iterator it(runDirectory_);it != itEnd; ++it)
+    {
+      std::string lsdir = it->path().string();
+      size_t pos = lsdir.find("ls");
+      if (boost::filesystem::is_directory(it->path()) && pos!=std::string::npos)
+      {
+	if (pos+2<lsdir.size()) {
+	  int ls = atoi(lsdir.substr(pos+2,std::string::npos).c_str());
+	  if (ls && ls>lastOpenedLumi_ ) {
+	    lsdirs.push_back(*it);
+	  }
+	}
+      }
+    }
+
+    //check if raw files are not appearing in per-LS dir scheme
+    if (!lsdirs.size() && currentDataDir_.string().empty())
+    {
+      bool foundRawDataInBaseDir = false;
+      for ( boost::filesystem::directory_iterator it(runDirectory_);it != itEnd; ++it)
+      {
+	if (!boost::filesystem::is_directory(it->path()) && it->path().extension() == ".raw")
+	{
+          foundRawDataInBaseDir = true;
+	  break;
+	}
+      }
+      if (foundRawDataInBaseDir)
+      {
+	//start reading files in "bu" directory
+	lastOpenedLumi_++;//mark beginning of lumi(it will be updated)
+	currentDataDir_=runDirectory_;
+	continue;
+      }
+    }
+
+    if (!lsdirs.size() && !currentDataDir_.string().empty()) {
+      //maybe run has ended
+      if ( runEnded() ) return true;
+      //file grab failed, but there is only one lumi dir and is active. keep looping for more data
+      usleep(100000);
+      continue;
+    }
+    
+    //find next suitable LS directory
+    if (lsdirs.size()) {
+      std::sort(lsdirs.begin(), lsdirs.end());
+      currentDataDir_ = lsdirs.at(0);
+      lastOpenedLumi_ = atoi(currentDataDir_.string().substr(currentDataDir_.string().rfind("/")+3,std::string::npos).c_str());
+      newLumiSection_=true;
+      break;
+    }
+    //loop again
+    usleep(100000);
+  }
+  while (!edm::shutdown_flag);
+
+  return true;
+
+}
 
 bool
-FedRawDataInputSource::grabNextFile(boost::filesystem::path const& nextFile)
+FedRawDataInputSource::grabNextFile(boost::filesystem::path const& rawdir,boost::filesystem::path const& nextFile)
 {
   std::vector<boost::filesystem::path> files;
-  
+
+  boost::filesystem::directory_iterator itEnd;
+  //first look into last LS dir
   try
   {
-    boost::filesystem::directory_iterator itEnd;
-    for ( boost::filesystem::directory_iterator it(runDirectory_);
+    for ( boost::filesystem::directory_iterator it(rawdir.string());
           it != itEnd; ++it)
     {
       if ( it->path().extension() == ".raw" )
@@ -247,11 +360,12 @@ FedRawDataInputSource::grabNextFile(boost::filesystem::path const& nextFile)
     
     if ( files.empty() )
     {
-      if ( runEnded() ) return true;
+      return false;
     }
     else
     {
       std::sort(files.begin(), files.end());
+      std::cout << " rename " << files.front() << " to " << nextFile << std::endl;
       boost::filesystem::rename(files.front(), nextFile);
       openFile(nextFile);
       return true;
@@ -296,8 +410,22 @@ void FedRawDataInputSource::createWorkingDirectory() {
   gethostname(thishost,255);
   std::ostringstream myDir;
   myDir << std::setfill('0') << std::setw(5) << thishost << "_" << getpid();
-  workingDirectory_ = runDirectory_;
+  workingDirectory_ = runBaseDirectory_;
+
+  boost::filesystem::directory_iterator itEnd;
+  bool foundHLTdir=false;
+  for ( boost::filesystem::directory_iterator it(runBaseDirectory_);
+      it != itEnd; ++it)
+  {
+    if ( boost::filesystem::is_directory(it->path()) &&
+	it->path().string().find("/hlt") !=std::string::npos)
+      foundHLTdir=true;
+  }
+  workingDirectory_ /= "hlt";
+  if (!foundHLTdir)
+    boost::filesystem::create_directories(workingDirectory_);
   workingDirectory_ /= myDir.str();
+  std::cout << " workDir " << workingDirectory_ << "will be created." << std::endl;
   boost::filesystem::create_directories(workingDirectory_);
   workDirCreated_=true;
 }
