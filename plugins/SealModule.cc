@@ -1,6 +1,6 @@
 #include "FWCore/Framework/interface/MakerMacros.h"
 #include "FWCore/ServiceRegistry/interface/ServiceMaker.h"
-#include "EventFilter/Utilities/interface/MicroStateService.h"
+//#include "EventFilter/Utilities/interface/MicroStateService.h"
 #include "EventFilter/Utilities/interface/ModuleWebRegistry.h"
 #include "EventFilter/Utilities/interface/ServiceWebRegistry.h"
 #include "EventFilter/Utilities/interface/TimeProfilerService.h"
@@ -15,11 +15,13 @@
 #include "EventFilter/Utilities/plugins/RecoEventWriterForFU.h"
 #include "EventFilter/Utilities/plugins/RecoEventOutputModuleForFU.h"
 #include "EventFilter/Utilities/plugins/RawEventOutputModuleForBU.h"
+#include "FastMonitoringService.h"
 
 using namespace edm::serviceregistry;
 using namespace evf;
 
-typedef edm::serviceregistry::AllArgsMaker<MicroStateService> MicroStateServiceMaker;
+//typedef edm::serviceregistry::AllArgsMaker<MicroStateService> MicroStateServiceMaker;
+typedef edm::serviceregistry::AllArgsMaker<MicroStateService, FastMonitoringService> FastMonitoringServiceMaker;
 typedef ParameterSetMaker<ModuleWebRegistry> maker1;
 typedef ParameterSetMaker<ServiceWebRegistry> maker2;
 
@@ -27,9 +29,10 @@ typedef RawEventOutputModuleForBU<RawEventFileWriterForBU> RawStreamFileWriterFo
 typedef RawEventOutputModuleForBU<MTRawEventFileWriterForBU> MTRawStreamFileWriterForBU;
 typedef RecoEventOutputModuleForFU<RecoEventWriterForFU> Stream;
 
-DEFINE_FWK_SERVICE_MAKER(MicroStateService, MicroStateServiceMaker);
+//DEFINE_FWK_SERVICE_MAKER(MicroStateService, MicroStateServiceMaker);
 DEFINE_FWK_SERVICE_MAKER(ModuleWebRegistry,maker1);
 DEFINE_FWK_SERVICE_MAKER(ServiceWebRegistry,maker2);
+DEFINE_FWK_SERVICE_MAKER(FastMonitoringService, FastMonitoringServiceMaker);
 DEFINE_FWK_SERVICE(TimeProfilerService);
 DEFINE_FWK_SERVICE(Stepper);
 DEFINE_FWK_SERVICE(EvFBuildingThrottle);
