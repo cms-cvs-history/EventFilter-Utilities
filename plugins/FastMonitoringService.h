@@ -125,20 +125,39 @@ namespace evf{
       void setMicroState(Microstate); // this is still needed for use in special functions like DQM which are in turn framework services. - the string pointer needs to be interpreted at each call. 
       
     private:
-      void dowork(){ // the function to be called in the thread. Thread completes when function returns.
-	while(!fmt_.m_stoprequest){
-	  std::cout << "Current states: Ms=" << fmt_.m_data.macrostate_ 
-		    << " ms=" << encPath_.encode(fmt_.m_data.ministate_)
-		    << " us=" << encModule_.encode(fmt_.m_data.microstate_)
-		    << std::endl;
-	  ::sleep(1);
-	}
+      void dowork() { // the function to be called in the thread. Thread completes when function returns.
+		while (!fmt_.m_stoprequest) {
+			std::cout << "Current states: Ms=" << fmt_.m_data.macrostate_
+					<< " ms=" << encPath_.encode(fmt_.m_data.ministate_)
+					<< " us=" << encModule_.encode(fmt_.m_data.microstate_)
+					<< std::endl;
+
+
+			// MARK! output microstate info JSON
+			// lock the monitor
+			fmt_.monlock_.lock();
+			fmt_.m_data.macrostateJ_ = fmt_.m_data.macrostate_;
+			fmt_.m_data.ministateJ_ = encPath_.encode(fmt_.m_data.ministate_);
+			fmt_.m_data.microstateJ_ = encModule_.encode(
+					fmt_.m_data.microstate_);
+			// FIXME update n_processed
+			fmt_.m_data.processedJ_ = 0;
+
+			fmt_.m_data.jsonMonitor_->snap();
+			fmt_.monlock_.unlock();
+
+			//::sleep(1);
+			::sleep(sleepTime_);
+		}
       }
 
       //the actual monitoring thread is held by a separate class object for ease of maintenance
       FastMonitoringThread fmt_;
       Encoding encModule_;
       Encoding encPath_;
+
+      int sleepTime_;
+      string rootDirectory_, defPath_, fastName_, fullName_;
 
     };
 

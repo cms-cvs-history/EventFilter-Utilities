@@ -22,18 +22,17 @@
 #include "FWCore/Framework/interface/InputSourceMacros.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
-#include "FWCore/Utilities/interface/UnixSignalHandlers.h"
-
-#include "IOPool/Streamer/interface/FRDEventMessage.h"
 
 #include "interface/shared/fed_header.h"
 #include "interface/shared/fed_trailer.h"
+
+#include "../interface/FileIO.h"
+#include "../interface/JSONFileCollector.h"
 
 
 FedRawDataInputSource::FedRawDataInputSource(edm::ParameterSet const& pset, edm::InputSourceDescription const& desc) :
 edm::RawInputSource(pset,desc),
 daqProvenanceHelper_(edm::TypeID(typeid(FEDRawDataCollection))),
-formatVersion_(0),
 fileIndex_(0),
 fileStream_(0),
 workDirCreated_(false),
@@ -44,6 +43,18 @@ lastOpenedLumi_(0)
   daqProvenanceHelper_.daqInit(productRegistryUpdate());
   setNewRun();
   setRunAuxiliary(new edm::RunAuxiliary(runNumber_, edm::Timestamp::beginOfTime(), edm::Timestamp::invalidTimestamp()));
+
+  count_ = 0;
+  // set names of the variables to be matched with JSON Definition
+  count_.setName("NEvents");
+
+  // create a vector of all monitorable parameters to be passed to the monitor
+  vector<JsonMonitorable*> monParams;
+  monParams.push_back(&count_);
+
+  // create a DataPointMonitor using vector of monitorable parameters and a path to a JSON Definition file
+  mon_ = new DataPointMonitor(monParams, "/home/aspataru/cmssw/CMSSW_6_1_0_pre4/src/EventFilter/Utilities/plugins/budef.jsd");
+
 }
 
 
@@ -51,6 +62,8 @@ FedRawDataInputSource::~FedRawDataInputSource()
 {
   if (fileStream_) fclose(fileStream_);
   fileStream_ = 0;
+  if (mon_ != 0)
+	  delete mon_;
 }
 
 
@@ -66,6 +79,7 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
     for ( boost::filesystem::directory_iterator it(rootDirectory);
           it != itEnd; ++it)
     {
+      std::cout << " it " << it->path().string() << std::endl;
       if ( boost::filesystem::is_directory(it->path()) &&
         std::string::npos != it->path().string().find("run") )
         dirs.push_back(*it);
@@ -96,6 +110,14 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
 bool FedRawDataInputSource::checkNextEvent()
 {
 
+  struct
+  {
+    uint32_t version;
+    uint32_t runNumber;
+    uint32_t lumiSection;
+    uint32_t eventNumber;
+  } eventHeader;
+
   if ( eofReached() && !openNextFile() )
   {
     // run has ended
@@ -108,31 +130,32 @@ bool FedRawDataInputSource::checkNextEvent()
   //same lumi, or new lumi detected in file (old mode)
   if (!newLumiSection_)
   {
-    FRDEventHeader_V2 eventHeader;
     fread((void*)&eventHeader, sizeof(uint32_t), 4, fileStream_);
-    assert( eventHeader.version_ > 1);
-    formatVersion_ = eventHeader.version_;
+    assert( eventHeader.version == 2 );
 
     //get new lumi from file header
-    if(!luminosityBlockAuxiliary() || luminosityBlockAuxiliary()->luminosityBlock() != eventHeader.lumi_)
+    if(!luminosityBlockAuxiliary() || luminosityBlockAuxiliary()->luminosityBlock() != eventHeader.lumiSection)
     {
       resetLuminosityBlockAuxiliary();
       timeval tv;
       gettimeofday(&tv,0);
       edm::Timestamp lsopentime((unsigned long long)tv.tv_sec*1000000+(unsigned long long)tv.tv_usec);
       edm::LuminosityBlockAuxiliary* luminosityBlockAuxiliary =
-	new edm::LuminosityBlockAuxiliary(runAuxiliary()->run(),eventHeader.lumi_,
+	new edm::LuminosityBlockAuxiliary(runAuxiliary()->run(),eventHeader.lumiSection,
 	    lsopentime, edm::Timestamp::invalidTimestamp());
       setLuminosityBlockAuxiliary(luminosityBlockAuxiliary);
     }
-    eventID_ = edm::EventID(eventHeader.run_, eventHeader.lumi_, eventHeader.event_);
-    lastOpenedLumi_=eventHeader.lumi_;
+    eventID_ = edm::EventID(eventHeader.runNumber, eventHeader.lumiSection, eventHeader.eventNumber);
+    lastOpenedLumi_=eventHeader.lumiSection;
     setEventCached();
   }
   else
   {
     //new lumi from directory name
-    resetLuminosityBlockAuxiliary();
+	  resetLuminosityBlockAuxiliary();
+
+	  //count_ = 0;
+
     timeval tv;
     gettimeofday(&tv,0);
     edm::Timestamp lsopentime((unsigned long long)tv.tv_sec*1000000+(unsigned long long)tv.tv_usec);
@@ -180,35 +203,27 @@ edm::Timestamp
 FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollection>& rawData)
 {
   edm::Timestamp tstamp;
-  uint32_t eventSize = 0;
-  uint32_t paddingSize = 0;
-  if ( formatVersion_ >= 3 )
-  {
-    fread((void*)&eventSize, sizeof(uint32_t), 1, fileStream_);
-    fread((void*)&paddingSize, sizeof(uint32_t), 1, fileStream_);
-  }
+  size_t totalEventSize = 0;
   uint32_t fedSizes[1024];
   fread((void*)fedSizes, sizeof(uint32_t), 1024, fileStream_);
-  if ( formatVersion_ < 3 )
-  {
-    for (unsigned int i=0;i<1024;i++)
-      eventSize += fedSizes[i];
+  for (unsigned int i=0;i<1024;i++) {
+    totalEventSize += fedSizes[i];
   }
   
   unsigned int gtpevmsize = fedSizes[FEDNumbering::MINTriggerGTPFEDID];
   if ( gtpevmsize > 0 )
     evf::evtn::evm_board_setformat(gtpevmsize);
   
-  char* event = new char[eventSize];
-  fread((void*)event, eventSize, 1, fileStream_);
+  char* event = new char[totalEventSize];
+  fread((void*)event, totalEventSize, 1, fileStream_);
   
-  while ( eventSize>0 )
+  while ( totalEventSize>0 )
   {
-    eventSize -= sizeof(fedt_t);
-    const fedt_t* fedTrailer = (fedt_t*)(event+eventSize);
+    totalEventSize -= sizeof(fedt_t);
+    const fedt_t* fedTrailer = (fedt_t*)(event+totalEventSize);
     const uint32_t fedSize = FED_EVSZ_EXTRACT(fedTrailer->eventsize) << 3; //trailer length counts in 8 bytes
-    eventSize -= (fedSize - sizeof(fedh_t));
-    const fedh_t* fedHeader = (fedh_t *)(event+eventSize);
+    totalEventSize -= (fedSize - sizeof(fedh_t));
+    const fedh_t* fedHeader = (fedh_t *)(event+totalEventSize);
     const uint16_t fedId = FED_SOID_EXTRACT(fedHeader->sourceid);
     if ( fedId == FEDNumbering::MINTriggerGTPFEDID )
     {
@@ -218,10 +233,9 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
     }
     FEDRawData& fedData=rawData->FEDData(fedId);
     fedData.resize(fedSize);
-    memcpy(fedData.data(),event+eventSize,fedSize);
+    memcpy(fedData.data(),event+totalEventSize,fedSize);
   }
-  assert( eventSize == 0 );
-  fseek(fileStream_, paddingSize, SEEK_CUR);
+  count_.value()++;
   delete event;
   return tstamp;
 }
@@ -236,14 +250,30 @@ FedRawDataInputSource::openNextFile()
   fileName << std::setfill('0') << std::setw(16) << fileIndex_++ << ".raw";
   nextFile /= fileName.str();
 
+  // write previous json
+  boost::filesystem::path jsonFile = workingDirectory_;
+  std::ostringstream fileNameJson;
+  fileNameJson << std::setfill('0') << std::setw(16) << fileIndex_ << ".json";
+  jsonFile /= fileNameJson.str();
+
+  // MARK! JSON is not generated in InputSource!
+  // create a DataPoint object and take a snapshot of the monitored data into it
+  /*
+  DataPoint dp;
+  mon_->snap(dp);
+
+  // serialize the DataPoint and output it
+  string output;
+  JSONSerializer::serialize(&dp, output);
+
+  string path = jsonFile.string();
+  std::cout << "CURRENT DATA DIR: " << path << std::endl;
+  FileIO::writeStringToFile(path, output);
+	*/
+  count_ = 0;
+
   openFile(nextFile);//closes previous file
   searchForNextFile(nextFile);
-  
-  //close file and end run in case of received shutdown signal
-  if (edm::shutdown_flag) {
-    if (fileStream_ != 0) openFile(nextFile);
-    return false;
-  }
 
   return ( fileStream_ != 0 || newLumiSection_ );
 }
@@ -258,7 +288,7 @@ FedRawDataInputSource::openFile(boost::filesystem::path const& nextFile)
     fileStream_ = 0;
     boost::filesystem::remove(openFile_); // wont work in case of forked children
   }
-  
+
   const int fileDescriptor = open(nextFile.c_str(), O_RDONLY);
   if ( fileDescriptor != -1 )
   {
@@ -331,12 +361,17 @@ FedRawDataInputSource::searchForNextFile(boost::filesystem::path const& nextFile
       currentDataDir_ = lsdirs.at(0);
       lastOpenedLumi_ = atoi(currentDataDir_.string().substr(currentDataDir_.string().rfind("/")+3,std::string::npos).c_str());
       newLumiSection_=true;
+      // MARK! input metafile merge
+      if (lastOpenedLumi_ > 1) {
+    	  // TODO re-enable
+  	    //mergeInputMetafilesForLumi();
+      }
       break;
     }
     //loop again
     usleep(100000);
   }
-  while (!edm::shutdown_flag);
+  while (1/*!edm::shutdown_flag*/);
 
   return true;
 
@@ -367,6 +402,21 @@ FedRawDataInputSource::grabNextFile(boost::filesystem::path const& rawdir,boost:
       std::sort(files.begin(), files.end());
       std::cout << " rename " << files.front() << " to " << nextFile << std::endl;
       boost::filesystem::rename(files.front(), nextFile);
+
+      // MARK! grab json file too, if previous didn't throw
+
+      /*
+      boost::filesystem::path jsonSourcePath(files.front());
+      boost::filesystem::path jsonDestPath(nextFile);
+      boost::filesystem::path jsonExt(".jsn");
+      jsonSourcePath.replace_extension(jsonExt);
+      jsonDestPath.replace_extension(jsonExt);
+
+      std::cout << " JSON rename " << jsonSourcePath << " to " << jsonDestPath << std::endl;
+
+      boost::filesystem::rename(jsonSourcePath, jsonDestPath);
+	  */
+
       openFile(nextFile);
       return true;
     }
@@ -428,6 +478,31 @@ void FedRawDataInputSource::createWorkingDirectory() {
   std::cout << " workDir " << workingDirectory_ << "will be created." << std::endl;
   boost::filesystem::create_directories(workingDirectory_);
   workDirCreated_=true;
+}
+
+int
+FedRawDataInputSource::mergeInputMetafilesForLumi() const
+{
+	string inputFolder = workingDirectory_.string();
+	std::stringstream ss;
+	ss << "inputLS" << lastOpenedLumi_ -1 << ".jsn";
+	string outputFile = workingDirectory_.string() + "/" + ss.str();
+	vector<string> inputJSONFilePaths;
+
+	std::cout << " >>>>>>>>->>>>>>>> Input metafile merge for LS: " << lastOpenedLumi_ - 1 << "; input folder=" << inputFolder
+			<< " outputFile=" << outputFile << std::endl;
+
+	string outcomeString;
+	FileIO::getFileList(inputFolder, inputJSONFilePaths, outcomeString, ".jsn", "^[0-9]+$");
+
+	int outcome = JSONFileCollector::mergeFiles(inputJSONFilePaths, outputFile, false);
+
+	// FIXME this fails on multiprocess
+	// delete all input files
+	for (auto a : inputJSONFilePaths)
+		std::remove(a.c_str());
+
+	return outcome;
 }
 
 // define this class as an input source

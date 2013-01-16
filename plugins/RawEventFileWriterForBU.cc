@@ -1,4 +1,4 @@
-// $Id: RawEventFileWriterForBU.cc,v 1.1.2.1 2012/09/04 12:49:24 meschi Exp $
+// $Id: RawEventFileWriterForBU.cc,v 1.1.2.2 2012/11/28 18:18:42 smorovic Exp $
 
 #include "RawEventFileWriterForBU.h"
 #include "FWCore/Utilities/interface/Adler32Calculator.h"
@@ -98,8 +98,14 @@ void RawEventFileWriterForBU::initialize(std::string const& destinationDir, std:
   ost_.reset(new std::ofstream(name.c_str(), std::ios_base::binary | std::ios_base::out));
  
   //move old file to done directory 
-  if (!oldFileName.empty()) 
-    rename(oldFileName.c_str(),destinationDir_.c_str());
+  if (!oldFileName.empty()) {
+	  //rename(oldFileName.c_str(),destinationDir_.c_str());
+	  int fretval = rename(oldFileName.c_str(),(destinationDir_+oldFileName.substr(oldFileName.rfind("/"))).c_str());
+	  // if (debug_)
+	  std::cout << " tried move " << oldFileName << " to " << destinationDir_
+			  << " status "  << fretval << " errno " << strerror(errno) << std::endl;
+  }
+
 
   if (!ost_->is_open()) {
     throw cms::Exception("RawEventFileWriterForBU","initialize")

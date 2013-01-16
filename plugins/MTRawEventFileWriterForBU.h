@@ -1,10 +1,14 @@
 #ifndef EVFMTRAWEVENTFILEWRITERFORBU
 #define EVFMTRAWEVENTFILEWRITERFORBU
 
-// $Id: MTRawEventFileWriterForBU.h,v 1.1.2.4 2012/11/06 10:52:42 mommsen Exp $
+// $Id: MTRawEventFileWriterForBU.h,v 1.1.2.5 2012/11/28 18:18:42 smorovic Exp $
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "IOPool/Streamer/interface/FRDEventMessage.h"
+
+#include "../interface/JsonMonitorable.h"
+#include "../interface/DataPointMonitor.h"
+#include "../interface/JSONSerializer.h"
 
 
 #ifdef linux
@@ -22,6 +26,8 @@
 #include <fcntl.h>
 
 #include "boost/shared_array.hpp"
+
+using namespace jsoncollector;
 
 namespace fwriter {
   class EventContainer;
@@ -70,7 +76,10 @@ class MTRawEventFileWriterForBU
   void threadRunner(std::string fileName, unsigned int instance);
 
   //std::string name_;
-  unsigned int count_;
+  //unsigned int count_;
+  IntJ perLumiEventCount_;
+  DataPointMonitor* lumiMon_;
+
   unsigned int numWriters_;
   unsigned int eventBufferSize_;
   bool sharedMode_;
@@ -94,5 +103,8 @@ class MTRawEventFileWriterForBU
   std::vector<uint32> v_adlerb_;
 
   unsigned char * fileHeader_;
+
+  std::vector<IntJ*> perFileCounters_;
+  std::vector<DataPointMonitor*> perFileMonitors_;
 };
 #endif

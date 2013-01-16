@@ -42,10 +42,12 @@ class RawEventOutputModuleForBU : public edm::OutputModule
   std::auto_ptr<Consumer> templateConsumer_;
   std::string label_;
   std::string instance_;
+  unsigned int numEventsPerFile_;
   unsigned long long totsize;
   unsigned long long writtensize;
   unsigned long long writtenSizeLast;
   unsigned int totevents;
+  unsigned int index_;
   timeval startOfLastLumi;
   bool firstLumi_;
 };
@@ -56,10 +58,12 @@ RawEventOutputModuleForBU<Consumer>::RawEventOutputModuleForBU(edm::ParameterSet
   templateConsumer_(new Consumer(ps)),
   label_(ps.getUntrackedParameter<std::string>("ProductLabel","source")),
   instance_(ps.getUntrackedParameter<std::string>("ProductInstance","")),
+  numEventsPerFile_(ps.getUntrackedParameter<unsigned int>("numEventsPerFile",100)),
   totsize(0LL),
   writtensize(0LL),
   writtenSizeLast(0LL),
   totevents(0),
+  index_(0),
   firstLumi_(true)
 {
 }
@@ -70,7 +74,14 @@ RawEventOutputModuleForBU<Consumer>::~RawEventOutputModuleForBU() {}
 template <class Consumer>
 void RawEventOutputModuleForBU<Consumer>::write(edm::EventPrincipal const& e) {
 
+  unsigned int ls = e.luminosityBlock();
   totevents++;
+  if(totevents%numEventsPerFile_==0){
+	  index_++;
+	  std::string filename = edm::Service<evf::EvFDaqDirector>()->getWorkdirFileForLumi( ls,index_);
+	    std::string destinationDir = edm::Service<evf::EvFDaqDirector>()->buBaseDir();
+	    templateConsumer_->initialize(destinationDir,filename,ls);
+  }
   // serialize the FEDRawDataCollection into the format that we expect for
   // FRDEventMsgView objects (may be better ways to do this)
   edm::Event event(const_cast<edm::EventPrincipal&>(e), description());
@@ -134,9 +145,10 @@ void RawEventOutputModuleForBU<Consumer>::endRun(edm::RunPrincipal const&)
 
 template <class Consumer>
 void RawEventOutputModuleForBU<Consumer>::beginLuminosityBlock(edm::LuminosityBlockPrincipal const& ls){
-  std::string filename = edm::Service<evf::EvFDaqDirector>()->getWorkdirFileForLumi( ls.id().luminosityBlock());
-  std::string destinationDir = edm::Service<evf::EvFDaqDirector>()->buBaseDir();
-  templateConsumer_->initialize(destinationDir,filename,ls.id().luminosityBlock());
+	index_ = 0;
+	std::string filename = edm::Service<evf::EvFDaqDirector>()->getWorkdirFileForLumi( ls.id().luminosityBlock(),index_);
+	std::string destinationDir = edm::Service<evf::EvFDaqDirector>()->buBaseDir();
+	templateConsumer_->initialize(destinationDir,filename,ls.id().luminosityBlock());
   edm::Service<evf::EvFDaqDirector>()->updateBuLock(ls.id().luminosityBlock()+1);
   if(!firstLumi_){
     timeval now;

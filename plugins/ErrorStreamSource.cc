@@ -14,7 +14,7 @@
 #include "FWCore/Framework/interface/InputSourceMacros.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
 
-#include "FWCore/Sources/interface/ProducerSourceFromFiles.h"
+#include "FWCore/Sources/interface/ExternalInputSource.h"
 
 #include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
 #include "DataFormats/FEDRawData/interface/FEDNumbering.h"
@@ -37,7 +37,7 @@ namespace errorstreamsource{
 }
 
 
-class ErrorStreamSource : public edm::ProducerSourceFromFiles
+class ErrorStreamSource : public edm::ExternalInputSource
 {
 public:
   // construction/destruction
@@ -47,8 +47,8 @@ public:
   
 private:
   // member functions
-  virtual bool setRunAndEventInfo(edm::EventID& id, edm::TimeValue_t& theTime);
-  virtual void produce(edm::Event& e);
+  void setRunAndEventInfo();
+  bool produce(edm::Event& e);
   
   void beginRun(edm::Run& r) {;}
   void endRun(edm::Run& r) {;} 
@@ -62,8 +62,11 @@ private:
   // member data
   std::vector<std::string>::const_iterator itFileName_;
   std::ifstream fin_;
-  std::auto_ptr<FEDRawDataCollection> result_;
 };
+
+
+using namespace std;
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // construction/destruction
@@ -72,7 +75,7 @@ private:
 //______________________________________________________________________________
 ErrorStreamSource::ErrorStreamSource(edm::ParameterSet const& pset,
 				     edm::InputSourceDescription const& desc)
-  : ProducerSourceFromFiles(pset,desc,true)
+  : ExternalInputSource(pset,desc)
 {
   itFileName_=fileNames().begin();
   openFile(*itFileName_);
@@ -92,7 +95,7 @@ ErrorStreamSource::~ErrorStreamSource()
 ////////////////////////////////////////////////////////////////////////////////
 
 //______________________________________________________________________________
-bool ErrorStreamSource::setRunAndEventInfo(edm::EventID& id, edm::TimeValue_t& theTime)
+void ErrorStreamSource::setRunAndEventInfo()
 {
   uint32_t version(1);
   uint32_t runNumber(0);
@@ -110,7 +113,7 @@ bool ErrorStreamSource::setRunAndEventInfo(edm::EventID& id, edm::TimeValue_t& t
   status = fin_.read((char*)&evtNumber,sizeof(uint32_t));
   
   if (!status) {
-    itFileName_++; if (itFileName_==fileNames().end()) { fin_.close(); return false; }
+    itFileName_++; if (itFileName_==fileNames().end()) { fin_.close(); return; }
     openFile(*itFileName_);
     status = fin_.read((char*)&runNumber,sizeof(uint32_t));
     if (runNumber < 32) {
@@ -121,17 +124,24 @@ bool ErrorStreamSource::setRunAndEventInfo(edm::EventID& id, edm::TimeValue_t& t
         status = fin_.read((char*)&lumiNumber,sizeof(uint32_t));
     }
     status = fin_.read((char*)&evtNumber,sizeof(uint32_t));
-    if (!status) { fin_.close(); return false; }
+    if (!status) { fin_.close(); return; }
   }
   
   runNumber = (runNumber==0) ? 1 : runNumber;
   
-  id = edm::EventID(runNumber, lumiNumber, evtNumber);
+  setRunNumber(runNumber);
+  setEventNumber(evtNumber);
+  setLuminosityBlockNumber_t(lumiNumber);
+}
+
 
 //______________________________________________________________________________
+bool ErrorStreamSource::produce(edm::Event& e)
+{
   unsigned int totalEventSize = 0;
+  if (!fin_.is_open()) return false;
   
-  result_.reset(new FEDRawDataCollection());
+  auto_ptr<FEDRawDataCollection> result(new FEDRawDataCollection());
   
   uint32_t fedSize[1024];
   fin_.read((char*)fedSize,1024*sizeof(uint32_t));
@@ -156,34 +166,32 @@ bool ErrorStreamSource::setRunAndEventInfo(edm::EventID& id, edm::TimeValue_t& t
       unsigned int gpsh = evf::evtn::getgpshigh((unsigned char*)fedh);
       edm::TimeValue_t time = gpsh;
       time = (time << 32) + gpsl;
-      theTime = time;
+      setTime(time);
     }
-    FEDRawData& fedData=result_->FEDData(soid);
+    FEDRawData& fedData=result->FEDData(soid);
     fedData.resize(fedsize);
     memcpy(fedData.data(),event+totalEventSize,fedsize);
   }
+  e.put(result);
   delete[] event;
   return true;
 }
 
-void ErrorStreamSource::produce(edm::Event& e) {
-  e.put(result_);
-}
 
 //______________________________________________________________________________
-bool ErrorStreamSource::openFile(const std::string& fileName)
+bool ErrorStreamSource::openFile(const string& fileName)
 {
   fin_.close();
   fin_.clear();
   size_t pos = fileName.find(':');
-  if (pos!=std::string::npos) {
-    std::string prefix = fileName.substr(0,pos);
+  if (pos!=string::npos) {
+    string prefix = fileName.substr(0,pos);
     if (prefix!="file") return false;
     pos++;
   }
   else pos=0;
 
-  fin_.open(fileName.substr(pos).c_str(),std::ios::in|std::ios::binary);
+  fin_.open(fileName.substr(pos).c_str(),ios::in|ios::binary);
   return fin_.is_open();
 }
 				 

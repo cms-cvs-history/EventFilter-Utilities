@@ -1,6 +1,9 @@
 #include "FastMonitoringService.h"
 #include <iostream>
 
+#include "boost/filesystem.hpp"
+#include <iomanip>
+
 namespace evf{
 
   const std::string FastMonitoringService::macroStateNames[FastMonitoringThread::MCOUNT] = 
@@ -15,10 +18,16 @@ namespace evf{
     MicroStateService(iPS,reg)
     ,encModule_(33)
     ,encPath_(0)
+  	,sleepTime_(iPS.getUntrackedParameter<int>("sleepTime", 1))
+    ,rootDirectory_(iPS.getUntrackedParameter<string>("rootDirectory", "/data"))
+    ,defPath_(iPS.getUntrackedParameter<string>("definitionPath", "/tmp/def.jsd"))
+    ,fastName_(iPS.getUntrackedParameter<string>("fastName", "microstates.fast"))
+    ,fullName_(iPS.getUntrackedParameter<string>("fullPath", "microstatesPerLUMI.jsh"))
   {
     fmt_.m_data.macrostate_=FastMonitoringThread::sInit;
     fmt_.m_data.ministate_=&nopath_;
     fmt_.m_data.microstate_=&reservedMicroStateNames[mInvalid];
+    fmt_.m_data.lumisection_ = 0;
     reg.watchPreModuleBeginJob(this,&FastMonitoringService::preModuleBeginJob);  
     reg.watchPreBeginLumi(this,&FastMonitoringService::preBeginLumi);  
     reg.watchPrePathBeginRun(this,&FastMonitoringService::prePathBeginRun);
@@ -38,6 +47,97 @@ namespace evf{
       encModule_.updateReserved((void*)(reservedMicroStateNames+i));
     encPath_.update((void*)&nopath_);
     encModule_.completeReservedWithDummies();
+
+    fmt_.m_data.macrostateJ_.setName("Macrostate");
+    fmt_.m_data.ministateJ_.setName("Ministate");
+    fmt_.m_data.microstateJ_.setName("Microstate");
+    fmt_.m_data.processedJ_.setName("Processed");
+    vector<JsonMonitorable*> monParams;
+    monParams.push_back(&fmt_.m_data.macrostateJ_);
+    monParams.push_back(&fmt_.m_data.ministateJ_);
+    monParams.push_back(&fmt_.m_data.microstateJ_);
+    monParams.push_back(&fmt_.m_data.processedJ_);
+
+    /**
+     * MARK! FIND where to output fast and slow files
+     */
+
+    // The run dir should be set via the configuration
+    // For now, just grab the latest run directory available
+
+    // FIND RUN DIRECTORY
+    // TODO refactor this, copied from FedRawDataInputSource
+    std::vector<boost::filesystem::path> dirs;
+    boost::filesystem::directory_iterator itEnd;
+    do {
+    	for ( boost::filesystem::directory_iterator it(rootDirectory_);
+    			it != itEnd; ++it)
+    	{
+    		std::cout << " it " << it->path().string() << std::endl;
+    		if ( boost::filesystem::is_directory(it->path()) &&
+    				std::string::npos != it->path().string().find("run") )
+    			dirs.push_back(*it);
+    	}
+    	if (dirs.empty()) usleep(500000);
+    } while ( dirs.empty() );
+    std::sort(dirs.begin(), dirs.end());
+    boost::filesystem::path runDirectory = dirs.back();
+
+    //FIND host_pid directory
+    char thishost[256];
+    gethostname(thishost,255);
+    std::ostringstream myDir;
+    myDir << std::setfill('0') << std::setw(5) << thishost << "_" << getpid();
+    boost::filesystem::path workingDirectory_ = runDirectory;
+    /*
+    boost::filesystem::directory_iterator itEnd2;
+    //bool foundHLTdir=false;
+    for ( boost::filesystem::directory_iterator it(runDirectory);
+    		it != itEnd2; ++it)
+    {
+    	if ( boost::filesystem::is_directory(it->path()) &&
+    			it->path().string().find("/hlt") !=std::string::npos)
+    		//foundHLTdir=true;
+    }
+    */
+    workingDirectory_ /= "hlt";
+    //if (!foundHLTdir)
+    //	std::cout << "<HLT> DIR NOT FOUND!" << std::endl;
+    	//boost::filesystem::create_directories(workingDirectory_);
+    workingDirectory_ /= myDir.str();
+
+    string fastPath, fullPath;
+
+    boost::filesystem::path fast = workingDirectory_;
+    fast /= fastName_;
+    fastPath = fast.string();
+
+    boost::filesystem::path full = workingDirectory_;
+    full /= fullName_;
+    fullPath = full.string();
+
+    /*
+     * initialize the fast monitor with:
+     * vector of pointers to monitorable parameters
+     * path to definition
+     * output path for the one-liner CSV (fast) file
+     * output path for per-lumi JSON histo file
+     *
+     * number of macrostates
+     * number of ministates
+     * number of microstates
+     *
+     */
+    std::cout << "FastMonitoringService: initializing FastMonitor with: "
+    		<< defPath_ << " " << fastPath << " " << fullPath << " "
+    		<< FastMonitoringThread::MCOUNT << " " << encPath_.current_ + 1 << " "
+    		<< encModule_.current_ + 1<< std::endl;
+
+    fmt_.m_data.jsonMonitor_.reset(
+			new FastMonitor(monParams, defPath_, fastPath, fullPath,
+					FastMonitoringThread::MCOUNT, encPath_.current_ + 1,
+					encModule_.current_ + 1));
+
     fmt_.start(&FastMonitoringService::dowork,this);
   }
 
@@ -119,7 +219,15 @@ namespace evf{
 
   void FastMonitoringService::preBeginLumi(edm::LuminosityBlockID const& iID, edm::Timestamp const& iTime)
   {
+	  // MARK! Service .json output per lumi
+	  fmt_.monlock_.lock();
+	  fmt_.m_data.lumisection_++;
+	  std::cout << "FastMonitoringService: Pre-begin LUMI: " << fmt_.m_data.lumisection_ << std::endl;
 
+	  if (fmt_.m_data.lumisection_ > 1) {
+		  fmt_.m_data.jsonMonitor_->outputFullHistoDataPoint(fmt_.m_data.lumisection_ - 1);
+	  }
+	  fmt_.monlock_.unlock();
   }
 
   void FastMonitoringService::preEventProcessing(const edm::EventID& iID,

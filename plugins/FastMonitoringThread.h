@@ -4,6 +4,14 @@
 #include "boost/thread/thread.hpp"
 
 #include <iostream>
+#include <vector>
+
+#include "../interface/JsonMonitorable.h"
+#include "../interface/FastMonitor.h"
+#include "../interface/JSONSerializer.h"
+
+using namespace jsoncollector;
+using std::vector;
 
 namespace evf{
 
@@ -22,6 +30,14 @@ namespace evf{
       unsigned int processed_;
       unsigned int lumisection_; //only updated on beginLumi signal
       unsigned int prescaleindex_; // ditto
+
+      // MARK! added params for microstate monitoring
+      IntJ macrostateJ_;
+      IntJ ministateJ_;
+      IntJ microstateJ_;
+      IntJ processedJ_;
+      boost::shared_ptr<FastMonitor> jsonMonitor_;
+
     };
     // a copy of the Framework/EventProcessor states 
 
@@ -44,6 +60,7 @@ namespace evf{
     boost::shared_ptr<boost::thread> m_thread;
     MonitorData m_data;
     boost::mutex lock_;
+    boost::mutex monlock_;
 
     friend class FastMonitoringService;
   };

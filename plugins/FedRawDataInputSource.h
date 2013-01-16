@@ -11,6 +11,12 @@
 #include "FWCore/Framework/interface/EventPrincipal.h"
 #include "FWCore/Sources/interface/DaqProvenanceHelper.h"
 
+#include "../interface/JsonMonitorable.h"
+#include "../interface/DataPointMonitor.h"
+#include "../interface/JSONSerializer.h"
+
+using namespace jsoncollector;
+
 class FEDRawDataCollection;
 class InputSourceDescription;
 class ParameterSet;
@@ -42,12 +48,13 @@ private:
   bool eofReached() const;
   bool runEnded() const;
 
+  int mergeInputMetafilesForLumi() const;
+
   edm::DaqProvenanceHelper daqProvenanceHelper_;
 
   boost::filesystem::path runDirectory_;
   boost::filesystem::path runBaseDirectory_;
   edm::RunNumber_t runNumber_;
-  uint32_t formatVersion_;
 
   boost::filesystem::path workingDirectory_;
   boost::filesystem::path openFile_;
@@ -59,6 +66,10 @@ private:
   bool newLumiSection_;
   int lastOpenedLumi_;
   boost::filesystem::path currentDataDir_;
+
+  DataPointMonitor* mon_;
+  IntJ count_;
+
 };
 
 #endif // EventFilter_Utilities_FedRawDataInputSource_h

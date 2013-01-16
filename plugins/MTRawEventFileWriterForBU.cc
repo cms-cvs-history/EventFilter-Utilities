@@ -1,8 +1,10 @@
-// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.4 2012/11/05 23:05:44 smorovic Exp $
+// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.5 2012/11/28 18:18:42 smorovic Exp $
 
 #include "MTRawEventFileWriterForBU.h"
 #include "FWCore/Utilities/interface/Adler32Calculator.h"
 #include "FWCore/Utilities/interface/Exception.h"
+
+#include "../interface/FileIO.h"
 
 #include <iostream>
 #include <iomanip>
@@ -11,6 +13,7 @@
 #include <string.h>
 #include <assert.h>
 #include <boost/tokenizer.hpp>
+
 
 namespace fwriter {
   class EventContainer {
@@ -60,27 +63,49 @@ namespace fwriter {
 }
 
 MTRawEventFileWriterForBU::MTRawEventFileWriterForBU(edm::ParameterSet const& ps):
-  numWriters_(ps.getUntrackedParameter<unsigned int>("numWriters",1))
-  ,eventBufferSize_(ps.getUntrackedParameter<unsigned int>("eventBufferSize",30))
-  ,sharedMode_(ps.getUntrackedParameter<bool>("sharedMode",true))
-  ,lumiSubdirectoriesMode_(ps.getUntrackedParameter<bool>("lumiSubdirectoriesMode",true))
-  ,debug_(ps.getUntrackedParameter<bool>("debug",false))
-  //,finishAfterLS_(ps.getUntrackedParameter<int>,-1)
+		lumiMon_(0),
+		  numWriters_(ps.getUntrackedParameter<unsigned int>("numWriters",1))
+,eventBufferSize_(ps.getUntrackedParameter<unsigned int>("eventBufferSize",30))
+,sharedMode_(ps.getUntrackedParameter<bool>("sharedMode",true))
+,lumiSubdirectoriesMode_(ps.getUntrackedParameter<bool>("lumiSubdirectoriesMode",true))
+,debug_(ps.getUntrackedParameter<bool>("debug",false))
+//,finishAfterLS_(ps.getUntrackedParameter<int>,-1)
 {
-  for (unsigned int i=0;i<eventBufferSize_;i++) {
-    if (!sharedMode_)
-      EventPool.push_back(new fwriter::EventContainer(1048576));
-    else
-      EventPool.push_back(new fwriter::EventContainer());
-    freeIds.push_back(i);
-  }
-  fileHeader_= new unsigned char[1024*1024]; 
+	for (unsigned int i=0;i<eventBufferSize_;i++) {
+		if (!sharedMode_)
+			EventPool.push_back(new fwriter::EventContainer(1048576));
+		else
+			EventPool.push_back(new fwriter::EventContainer());
+		freeIds.push_back(i);
+	}
+	fileHeader_= new unsigned char[1024*1024];
+
+	perLumiEventCount_ = 0;
+	// set names of the variables to be matched with JSON Definition
+	perLumiEventCount_.setName("NEvents");
+
+	// create a vector of all monitorable parameters to be passed to the monitor
+	vector<JsonMonitorable*> lumiMonParams;
+	lumiMonParams.push_back(&perLumiEventCount_);
+
+	// create a DataPointMonitor using vector of monitorable parameters and a path to a JSON Definition file
+	lumiMon_ = new DataPointMonitor(lumiMonParams, "/home/aspataru/cmssw/CMSSW_6_1_0_pre4/src/EventFilter/Utilities/plugins/budef.jsd");
 }
 
 
 MTRawEventFileWriterForBU::~MTRawEventFileWriterForBU()
 {
   finishThreads();
+  if (lumiMon_ != 0)
+	  delete lumiMon_;
+  while (!perFileMonitors_.empty()) {
+	  delete perFileMonitors_.back();
+	  perFileMonitors_.pop_back();
+  }
+  while (!perFileCounters_.empty()) {
+  	  delete perFileCounters_.back();
+  	perFileCounters_.pop_back();
+    }
 }
 
 void MTRawEventFileWriterForBU::doOutputEvent(FRDEventMsgView const& msg)
@@ -147,12 +172,29 @@ void MTRawEventFileWriterForBU::initialize(std::string const& destinationDir, st
 
 void MTRawEventFileWriterForBU::endOfLS(int ls)
 {
-  finishThreads();
-  //writing empty EoLS file (will be filled with information)
-  std::ostringstream ostr;
-  ostr << destinationDir_ << "/EoLS_" << std::setfill('0') << std::setw(6) << ls << ".json"; 
-  int outfd_ = open(ostr.str().c_str(), O_WRONLY | O_CREAT,  S_IRWXU);
-  if(outfd_!=0){ close(outfd_); outfd_=0;}
+	finishThreads();
+	//writing empty EoLS file (will be filled with information)
+	// MARK! BU EOL json
+
+	// create a DataPoint object and take a snapshot of the monitored data into it
+	DataPoint dp;
+	lumiMon_->snap(dp);
+
+	std::ostringstream ostr;
+	ostr << destinationDir_ << "/EoLS_" << std::setfill('0') << std::setw(6) << ls << ".json";
+	int outfd_ = open(ostr.str().c_str(), O_WRONLY | O_CREAT,  S_IRWXU);
+	if(outfd_!=0){close(outfd_); outfd_=0;}
+
+	// serialize the DataPoint and output it
+	string output;
+	JSONSerializer::serialize(&dp, output);
+
+	string path = ostr.str();
+	FileIO::writeStringToFile(path, output);
+
+	perLumiEventCount_ = 0;
+
+
 }
 
 void MTRawEventFileWriterForBU::queueEvent(const char* buffer,unsigned long size)
@@ -176,6 +218,7 @@ void MTRawEventFileWriterForBU::queueEvent(const char* buffer,unsigned long size
 
   queue_lock.lock();
   queuedIds.push_back(freeId);
+  perLumiEventCount_.value()++;
   queue_lock.unlock();
 #endif
 }
@@ -202,6 +245,7 @@ void MTRawEventFileWriterForBU::queueEvent(boost::shared_array<unsigned char>& m
 
   queue_lock.lock();
   queuedIds.push_back(freeId);
+  perLumiEventCount_.value()++;
   queue_lock.unlock();
 #endif
 }
@@ -219,6 +263,22 @@ void MTRawEventFileWriterForBU::dispatchThreads(std::string fileBase, unsigned i
     instanceName << fileBase << "_" << i;
     if (suffix.size())
       instanceName << "." << suffix;
+
+    // populate perFileCounters
+    IntJ* currentVal = new IntJ();
+    *currentVal = 0;
+    currentVal->setName("NEvents");
+    perFileCounters_.push_back(currentVal);
+    // create perFileMonitors
+    perLumiEventCount_.setName("NEvents");
+
+    // create a vector of all monitorable parameters to be passed to the monitor
+    vector<JsonMonitorable*> lumiMonParams;
+    lumiMonParams.push_back(perFileCounters_[i]);
+
+    // create a DataPointMonitor using vector of monitorable parameters and a path to a JSON Definition file
+    perFileMonitors_.push_back(new DataPointMonitor(lumiMonParams, "/home/aspataru/cmssw/CMSSW_6_1_0_pre4/src/EventFilter/Utilities/plugins/budef.jsd"));
+
     writers.push_back(std::auto_ptr<std::thread>(new std::thread(&MTRawEventFileWriterForBU::threadRunner,this,instanceName.str(),i)));
   }
 #endif
@@ -288,6 +348,7 @@ void MTRawEventFileWriterForBU::threadRunner(std::string fileName,unsigned int i
 
     queue_lock.lock();
     freeIds.push_back(qid);
+    perFileCounters_[instance]->value()++;
     queue_lock.unlock();
   }
   //flush and close file
@@ -306,6 +367,20 @@ void MTRawEventFileWriterForBU::threadRunner(std::string fileName,unsigned int i
   if (debug_)
     std::cout << " tried move " << fileName << " to " << destinationDir_+lumiSectionSubDir_
               << " status "  << fretval << " errno " << strerror(errno) << std::endl;
+
+  // MARK! BU per-file json
+  DataPoint dp;
+  perFileMonitors_[instance]->snap(dp);
+  string output;
+  JSONSerializer::serialize(&dp, output);
+  std::stringstream ss;
+  ss << destinationDir_ << lumiSectionSubDir_ << fileName.substr(fileName.rfind("/") + 1, fileName.size() - fileName.rfind("/") - 5) << ".jsn";
+  string path = ss.str();
+  FileIO::writeStringToFile(path, output);
+  if (debug_)
+	std::cout << "Wrote JSON input file: " << path << std::endl;
+
+  perFileCounters_[instance]->value() = 0;
 
 #endif
 }
