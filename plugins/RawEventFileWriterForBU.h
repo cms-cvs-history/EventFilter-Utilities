@@ -1,10 +1,14 @@
 #ifndef EVFRAWEVENTFILEWRITERFORBU
 #define EVFRAWEVENTFILEWRITERFORBU
 
-// $Id: RawEventFileWriterForBU.h,v 1.1.2.2 2012/09/26 22:07:10 smorovic Exp $
+// $Id: RawEventFileWriterForBU.h,v 1.1.2.3 2012/11/28 18:18:42 smorovic Exp $
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "IOPool/Streamer/interface/FRDEventMessage.h"
+
+#include "EventFilter/Utilities/interface/JsonMonitorable.h"
+#include "EventFilter/Utilities/interface/DataPointMonitor.h"
+#include "EventFilter/Utilities/interface/JSONSerializer.h"
 
 #include <fstream>
 #include <stdio.h>
@@ -13,6 +17,8 @@
 #include <fcntl.h>
 
 #include "boost/shared_array.hpp"
+
+using namespace jsoncollector;
 
 class RawEventFileWriterForBU 
 {
@@ -36,12 +42,17 @@ class RawEventFileWriterForBU
   bool sharedMode() const {return false;}
  private:
 
-
+  IntJ perLumiEventCount_;
+  DataPointMonitor* lumiMon_;
+  IntJ perFileEventCount_;
+  DataPointMonitor* perFileMon_;
 
   std::auto_ptr<std::ofstream> ost_;
   int outfd_;
   std::string fileName_;
   std::string destinationDir_;
+
+  string jsonDefLocation_;
 
   uint32 adlera_;
   uint32 adlerb_;
