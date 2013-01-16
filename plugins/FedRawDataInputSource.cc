@@ -405,7 +405,6 @@ FedRawDataInputSource::grabNextFile(boost::filesystem::path const& rawdir,boost:
 
       // MARK! grab json file too, if previous didn't throw
 
-      /*
       boost::filesystem::path jsonSourcePath(files.front());
       boost::filesystem::path jsonDestPath(nextFile);
       boost::filesystem::path jsonExt(".jsn");
@@ -415,7 +414,6 @@ FedRawDataInputSource::grabNextFile(boost::filesystem::path const& rawdir,boost:
       std::cout << " JSON rename " << jsonSourcePath << " to " << jsonDestPath << std::endl;
 
       boost::filesystem::rename(jsonSourcePath, jsonDestPath);
-	  */
 
       openFile(nextFile);
       return true;
@@ -480,6 +478,7 @@ void FedRawDataInputSource::createWorkingDirectory() {
   workDirCreated_=true;
 }
 
+// TODO fix implementation
 int
 FedRawDataInputSource::mergeInputMetafilesForLumi() const
 {
@@ -497,7 +496,7 @@ FedRawDataInputSource::mergeInputMetafilesForLumi() const
 
 	int outcome = JSONFileCollector::mergeFiles(inputJSONFilePaths, outputFile, false);
 
-	// FIXME this fails on multiprocess
+	// FIXME this? fails on multiprocess
 	// delete all input files
 	for (auto a : inputJSONFilePaths)
 		std::remove(a.c_str());
