@@ -42,7 +42,7 @@ namespace evf{
 	return dirManager_.findHighestRun();
       }
       std::string getFileForLumi(unsigned int ls);
-      std::string getWorkdirFileForLumi(unsigned int ls);
+      std::string getWorkdirFileForLumi(unsigned int ls, unsigned int index);
       std::string getPathForFU();
       void removeFile(unsigned int ls);
       void removeFile(std::string &);

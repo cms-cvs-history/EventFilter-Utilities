@@ -174,11 +174,11 @@ namespace evf{
     return retval;
   }
 
-  std::string EvFDaqDirector::getWorkdirFileForLumi(unsigned int ls){
+  std::string EvFDaqDirector::getWorkdirFileForLumi(unsigned int ls, unsigned int index){
     std::string retval = bu_base_open_dir_;
     retval += "/ls";
     std::ostringstream ost;
-    ost << std::setfill('0') << std::setw(6) << ls << ".raw";
+    ost << std::setfill('0') << std::setw(6) << ls << "_" << index << ".raw";
     retval += ost.str();
     return retval;
   }
@@ -321,7 +321,7 @@ namespace evf{
     return retval;
   }
 
-
+  // TAG BU JSON here too??
   void EvFDaqDirector::writeLsStatisticsBU(unsigned int ls, unsigned int events, unsigned long long totsize, long long lsusec){
     if(bu_w_monitor_stream != 0){
       int check = fseek(bu_w_monitor_stream,0,SEEK_SET);
