@@ -1,4 +1,4 @@
-// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.5 2012/11/28 18:18:42 smorovic Exp $
+// $Id: MTRawEventFileWriterForBU.cc,v 1.1.2.6 2013/01/16 11:33:54 aspataru Exp $
 
 #include "MTRawEventFileWriterForBU.h"
 #include "FWCore/Utilities/interface/Adler32Calculator.h"
@@ -174,7 +174,7 @@ void MTRawEventFileWriterForBU::endOfLS(int ls)
 {
 	finishThreads();
 	//writing empty EoLS file (will be filled with information)
-	// MARK! BU EOL json
+	// MARK! BU EOL json OLD!!!
 
 	// create a DataPoint object and take a snapshot of the monitored data into it
 	DataPoint dp;
@@ -368,7 +368,7 @@ void MTRawEventFileWriterForBU::threadRunner(std::string fileName,unsigned int i
     std::cout << " tried move " << fileName << " to " << destinationDir_+lumiSectionSubDir_
               << " status "  << fretval << " errno " << strerror(errno) << std::endl;
 
-  // MARK! BU per-file json
+  // MARK! BU per-file json OLD!!!
   DataPoint dp;
   perFileMonitors_[instance]->snap(dp);
   string output;
