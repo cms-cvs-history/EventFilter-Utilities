@@ -10,7 +10,7 @@
 #ifndef JSONHISTOCOLLECTOR_H_
 #define JSONHISTOCOLLECTOR_H_
 
-#include "../lib/json.h"
+#include "EventFilter/Utilities/src/json.h"
 #include "DataPointDefinition.h"
 #include "HistoDataPoint.h"
 #include <string>

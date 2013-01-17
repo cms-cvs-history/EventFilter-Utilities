@@ -8,7 +8,7 @@
 #ifndef JSONSERIALIZABLE_H_
 #define JSONSERIALIZABLE_H_
 
-#include "../lib/json.h"
+#include "EventFilter/Utilities/src/json.h"
 
 namespace jsoncollector
 {
