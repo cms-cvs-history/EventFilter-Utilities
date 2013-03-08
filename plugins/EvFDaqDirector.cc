@@ -9,7 +9,7 @@ namespace evf{
     , run_dir_("0")
     , bu_base_dir_(pset.getUntrackedParameter<std::string>("buBaseDir","bu"))
     , sm_base_dir_(pset.getUntrackedParameter<std::string>("smBaseDir","sm"))
-    , monitor_base_dir_(pset.getUntrackedParameter<std::string>("monBaseDir","mon"))
+    , monitor_base_dir_(pset.getUntrackedParameter<std::string>("monBaseDir","MON"))
     , directorBu_(pset.getUntrackedParameter<bool>("directorIsBu",false))
     , bu_w_flk({F_WRLCK,SEEK_SET,0,0,0})
     , bu_r_flk({F_RDLCK,SEEK_SET,0,0,0})
@@ -21,6 +21,8 @@ namespace evf{
     , bu_r_lock_stream(0)
     , fu_rw_lock_stream(0)
     , dirManager_(base_dir_)
+    , slaveResources_(pset.getUntrackedParameter<std::vector<std::string>>("slaveResources", std::vector<std::string>()))
+    , slavePathToData_(pset.getUntrackedParameter<std::string>("slavePathToData","/data"))
   {
     reg.watchPreBeginRun(this,&EvFDaqDirector::preBeginRun);  
     reg.watchPostEndRun(this,&EvFDaqDirector::postEndRun);  
@@ -64,6 +66,11 @@ namespace evf{
       throw cms::Exception("DaqDirector") << " Error checking run dir " << run_dir_ << " this is not the highest run "
 					  << dirManager_.findHighestRunDir() << "\n";
     }
+
+    // MARK! copy run directory to FU's (RUN START SIGNAL)
+    // CAUTION! the FU's must start AFTER the bu dir is created (below)
+     copyRunDirToSlaves();
+
     //make or find bu base dir
     if (bu_base_dir_.empty()) {
       ost<<base_dir_ << "/run" << id.run();
@@ -106,7 +113,9 @@ namespace evf{
     //ost.str("");
     
     //make or find monitor base dir
-    ost<<base_dir_ << "/run" << id.run() << "/" << monitor_base_dir_;
+    //char thishost[256];
+    //gethostname(thishost,255);
+    ost<<base_dir_ << "/run" << id.run() << "/bu/" << monitor_base_dir_;
     monitor_base_dir_= ost.str();
     retval = mkdir(monitor_base_dir_.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     if(retval!=0 && errno !=EEXIST)
@@ -163,6 +172,23 @@ namespace evf{
 
       }
     std::cout << "DaqDirector - preBeginRun success" << std::endl;
+  }
+
+  bool EvFDaqDirector::copyRunDirToSlaves() {
+	  if (slaveResources_.size() == 0) {
+		  return false;
+	  }
+
+	  for (unsigned int i = 0; i < slaveResources_.size(); i++) {
+		  std::string dataPathInSlave = slaveResources_[i] + ":" + slavePathToData_;
+		  std::string systemCommand = "cp -r " + run_dir_ + " " + slavePathToData_;
+		  // MARK! replace with scp in test system
+		  //std::string systemCommand = "scp -r " + run_dir_ + " " + dataPathInSlave;
+		  int rc = system(systemCommand.c_str());
+		  std::cout << "tried push run dir: " << run_dir_ << " to slave location: " << dataPathInSlave;
+		  std::cout << " return code = " << rc << std::endl;
+	  }
+	  return true;
   }
  
   std::string EvFDaqDirector::getFileForLumi(unsigned int ls){
@@ -321,7 +347,6 @@ namespace evf{
     return retval;
   }
 
-  // TAG BU JSON here too??
   void EvFDaqDirector::writeLsStatisticsBU(unsigned int ls, unsigned int events, unsigned long long totsize, long long lsusec){
     if(bu_w_monitor_stream != 0){
       int check = fseek(bu_w_monitor_stream,0,SEEK_SET);

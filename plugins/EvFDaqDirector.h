@@ -11,6 +11,7 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include <vector>
 
 //system headers
 //#include <sys/types.h>
@@ -56,6 +57,7 @@ namespace evf{
     private:
       bool bulock();
       bool fulock();
+      bool copyRunDirToSlaves();
 
       std::string base_dir_;
       std::string run_dir_;
@@ -80,6 +82,9 @@ namespace evf{
 
       FILE * bu_w_monitor_stream;
       FILE * bu_t_monitor_stream;
+
+      std::vector<std::string> slaveResources_;
+      std::string slavePathToData_;
   };
 }
 
