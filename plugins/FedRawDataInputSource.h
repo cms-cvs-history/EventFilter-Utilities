@@ -39,21 +39,25 @@ private:
   virtual void rewind_();
 
   void createWorkingDirectory();
-  void findRunDir(const std::string& rootDirectory);
+  void findRunDir(const std::string& rootFUDirectory);
   edm::Timestamp fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollection>&);
   bool openNextFile();
   void openFile(boost::filesystem::path const&);
   bool searchForNextFile(boost::filesystem::path const&);
-  bool grabNextFile(boost::filesystem::path const&,boost::filesystem::path const&);
+  //bool grabNextFile(boost::filesystem::path const&,boost::filesystem::path const&);
+  bool grabNextFile(std::vector<boost::filesystem::path>&,boost::filesystem::path const&,std::vector<boost::filesystem::path>&);
   bool eofReached() const;
   bool runEnded() const;
 
-  int mergeInputMetafilesForLumi() const;
+
 
   edm::DaqProvenanceHelper daqProvenanceHelper_;
 
-  boost::filesystem::path runDirectory_;
-  boost::filesystem::path runBaseDirectory_;
+  // the BU run directory
+  boost::filesystem::path buRunDirectory_;
+  // the OUTPUT run directory
+  boost::filesystem::path localRunBaseDirectory_;
+  boost::filesystem::path localRunDirectory_;
   edm::RunNumber_t runNumber_;
 
   boost::filesystem::path workingDirectory_;
@@ -66,9 +70,6 @@ private:
   bool newLumiSection_;
   int lastOpenedLumi_;
   boost::filesystem::path currentDataDir_;
-
-  DataPointMonitor* mon_;
-  IntJ count_;
 
 };
 

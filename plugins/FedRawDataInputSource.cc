@@ -3,9 +3,12 @@
 #include <iostream>
 #include <sstream>
 #include <sys/types.h>
+#include <sys/file.h>
 #include <unistd.h>
 #include <vector>
+#include <fstream>
 #include <boost/algorithm/string.hpp>
+#include <stdio.h>
 
 #include "DataFormats/FEDRawData/interface/FEDNumbering.h"
 #include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
@@ -39,22 +42,11 @@ workDirCreated_(false),
 eventID_(),
 lastOpenedLumi_(0)
 {
-  findRunDir( pset.getUntrackedParameter<std::string>("rootDirectory") );
+  buRunDirectory_ = boost::filesystem::path(pset.getUntrackedParameter<std::string>("rootBUDirectory"));
+  findRunDir( pset.getUntrackedParameter<std::string>("rootFUDirectory") );
   daqProvenanceHelper_.daqInit(productRegistryUpdate());
   setNewRun();
   setRunAuxiliary(new edm::RunAuxiliary(runNumber_, edm::Timestamp::beginOfTime(), edm::Timestamp::invalidTimestamp()));
-
-  count_ = 0;
-  // set names of the variables to be matched with JSON Definition
-  count_.setName("NEvents");
-
-  // create a vector of all monitorable parameters to be passed to the monitor
-  vector<JsonMonitorable*> monParams;
-  monParams.push_back(&count_);
-
-  // create a DataPointMonitor using vector of monitorable parameters and a path to a JSON Definition file
-  mon_ = new DataPointMonitor(monParams, "/home/aspataru/cmssw/CMSSW_6_1_0_pre4/src/EventFilter/Utilities/plugins/budef.jsd");
-
 }
 
 
@@ -62,13 +54,11 @@ FedRawDataInputSource::~FedRawDataInputSource()
 {
   if (fileStream_) fclose(fileStream_);
   fileStream_ = 0;
-  if (mon_ != 0)
-	  delete mon_;
 }
 
 
 void
-FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
+FedRawDataInputSource::findRunDir(const std::string& rootFUDirectory)
 {
   // The run dir should be set via the configuration
   // For now, just grab the latest run directory available
@@ -76,7 +66,7 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
   std::vector<boost::filesystem::path> dirs;
   boost::filesystem::directory_iterator itEnd;
   do {
-    for ( boost::filesystem::directory_iterator it(rootDirectory);
+    for ( boost::filesystem::directory_iterator it(rootFUDirectory);
           it != itEnd; ++it)
     {
       std::cout << " it " << it->path().string() << std::endl;
@@ -87,23 +77,32 @@ FedRawDataInputSource::findRunDir(const std::string& rootDirectory)
     if (dirs.empty()) usleep(500000);
   } while ( dirs.empty() );
   std::sort(dirs.begin(), dirs.end());
-  runDirectory_ = dirs.back();
-  runBaseDirectory_ = dirs.back();
+  localRunDirectory_ = dirs.back();
+  localRunBaseDirectory_ = dirs.back();
 
-  std::string rnString = runDirectory_.string().substr(runDirectory_.string().find("run")+3);
+  std::string rnString = localRunDirectory_.string().substr(localRunDirectory_.string().find("run")+3);
   runNumber_ = atoi(rnString.c_str());
 
-  //find "bu" subdir and take files from there, if present
-  for ( boost::filesystem::directory_iterator it(runDirectory_);it != itEnd; ++it)
+  // get the corresponding BU dir
+  buRunDirectory_ /= localRunDirectory_.filename();
+
+  if (boost::filesystem::exists(buRunDirectory_)) {
+	  //find "bu" subdir and take files from there, if present
+	  for ( boost::filesystem::directory_iterator it(buRunDirectory_);it != itEnd; ++it)
+	  {
+		  if ( boost::filesystem::is_directory(it->path()) && boost::algorithm::ends_with(it->path().string(),"/bu"))
+		  {
+			  buRunDirectory_=*it;
+			  break;
+		  }
+	  }
+  }
+  else
   {
-    if ( boost::filesystem::is_directory(it->path()) && boost::algorithm::ends_with(it->path().string(),"/bu"))
-    { 
-      runDirectory_=*it;
-      break;
-    }
+	  std::cout << "BU INPUT DIRECTORY DOES NOT EXIST @: " << buRunDirectory_.string() << std::endl;
   }
 
-  edm::LogInfo("FedRawDataInputSource") << "Getting data from " << runDirectory_.string();
+  edm::LogInfo("FedRawDataInputSource") << "Getting data from " << buRunDirectory_.string();
 
 }
 
@@ -235,7 +234,6 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
     fedData.resize(fedSize);
     memcpy(fedData.data(),event+totalEventSize,fedSize);
   }
-  count_.value()++;
   delete event;
   return tstamp;
 }
@@ -245,32 +243,21 @@ bool
 FedRawDataInputSource::openNextFile()
 {
   if (!workDirCreated_) createWorkingDirectory();
-  boost::filesystem::path nextFile = workingDirectory_;
+  //boost::filesystem::path nextFile = workingDirectory_;
+  boost::filesystem::path nextFile = buRunDirectory_;
   std::ostringstream fileName;
-  fileName << std::setfill('0') << std::setw(16) << fileIndex_++ << ".raw";
+  char thishost[256];
+  gethostname(thishost,255);
+  fileName << std::setfill('0') << std::setw(16) << fileIndex_++ << "_" << thishost << "_" << getpid() << ".rawg";
   nextFile /= fileName.str();
 
   // write previous json
+  /*
   boost::filesystem::path jsonFile = workingDirectory_;
   std::ostringstream fileNameJson;
   fileNameJson << std::setfill('0') << std::setw(16) << fileIndex_ << ".json";
   jsonFile /= fileNameJson.str();
-
-  // MARK! JSON is not generated in InputSource!
-  // create a DataPoint object and take a snapshot of the monitored data into it
-  /*
-  DataPoint dp;
-  mon_->snap(dp);
-
-  // serialize the DataPoint and output it
-  string output;
-  JSONSerializer::serialize(&dp, output);
-
-  string path = jsonFile.string();
-  std::cout << "CURRENT DATA DIR: " << path << std::endl;
-  FileIO::writeStringToFile(path, output);
-	*/
-  count_ = 0;
+  */
 
   openFile(nextFile);//closes previous file
   searchForNextFile(nextFile);
@@ -301,136 +288,261 @@ FedRawDataInputSource::openFile(boost::filesystem::path const& nextFile)
 bool
 FedRawDataInputSource::searchForNextFile(boost::filesystem::path const& nextFile)
 {
-  newLumiSection_=false;
-  do
-  {
-    //try to open file from same directory (same lumi?)
-    if (lastOpenedLumi_>0 && !currentDataDir_.string().empty())
-      if (grabNextFile(currentDataDir_,nextFile)) return true;
+	newLumiSection_=false;
+	std::vector<boost::filesystem::path> files;
+	std::vector<boost::filesystem::path> badFiles;
+	boost::filesystem::directory_iterator itEnd;
 
-    //no file, check for new lumi dir
-    boost::filesystem::directory_iterator itEnd;
-    std::vector<boost::filesystem::path> lsdirs;
-    for ( boost::filesystem::directory_iterator it(runDirectory_);it != itEnd; ++it)
-    {
-      std::string lsdir = it->path().string();
-      size_t pos = lsdir.find("ls");
-      if (boost::filesystem::is_directory(it->path()) && pos!=std::string::npos)
-      {
-	if (pos+2<lsdir.size()) {
-	  int ls = atoi(lsdir.substr(pos+2,std::string::npos).c_str());
-	  if (ls && ls>lastOpenedLumi_ ) {
-	    lsdirs.push_back(*it);
-	  }
-	}
-      }
-    }
-
-    //check if raw files are not appearing in per-LS dir scheme
-    if (!lsdirs.size() && currentDataDir_.string().empty())
-    {
-      bool foundRawDataInBaseDir = false;
-      for ( boost::filesystem::directory_iterator it(runDirectory_);it != itEnd; ++it)
-      {
-	if (!boost::filesystem::is_directory(it->path()) && it->path().extension() == ".raw")
+	do
 	{
-          foundRawDataInBaseDir = true;
-	  break;
+		currentDataDir_ = buRunDirectory_;
+		files.clear();
+		for ( boost::filesystem::directory_iterator it(currentDataDir_.string());
+				it != itEnd; ++it)
+		{
+			if ( it->path().extension() == ".raw")
+			{
+				bool fileIsBad = false;
+				for (unsigned int i = 0; i < badFiles.size(); i++)
+				{
+					std::cout << "Comparing against bad file list: " << badFiles[i].string() << " / " << it->path().string() << std::endl;
+					if ((it->path() == badFiles[i]))
+					{
+						std::cout << "FILE IS BAD = true" <<std::endl;
+						fileIsBad = true;
+						break;
+					}
+				}
+				if (fileIsBad)
+					std::cout << "Ignoring bad file =" << it->path().string() << std::endl;
+				else
+					files.push_back(*it);
+			}
+		}
+		if (files.size() > 0)
+		{
+			std::cout << "grabbin next file" <<std::endl;
+			if (grabNextFile(files,nextFile,badFiles))
+			{
+				badFiles.clear();
+				return true;
+			}
+		}
+		else {
+			std::cout << "NOTHING TO GRAB! ... retrying ..." << std::endl;
+		}
+
+		//loop again
+		usleep(300000);
 	}
-      }
-      if (foundRawDataInBaseDir)
-      {
-	//start reading files in "bu" directory
-	lastOpenedLumi_++;//mark beginning of lumi(it will be updated)
-	currentDataDir_=runDirectory_;
-	continue;
-      }
-    }
+	while (1/*!edm::shutdown_flag*/);
 
-    if (!lsdirs.size() && !currentDataDir_.string().empty()) {
-      //maybe run has ended
-      if ( runEnded() ) return true;
-      //file grab failed, but there is only one lumi dir and is active. keep looping for more data
-      usleep(100000);
-      continue;
-    }
-    
-    //find next suitable LS directory
-    if (lsdirs.size()) {
-      std::sort(lsdirs.begin(), lsdirs.end());
-      currentDataDir_ = lsdirs.at(0);
-      lastOpenedLumi_ = atoi(currentDataDir_.string().substr(currentDataDir_.string().rfind("/")+3,std::string::npos).c_str());
-      newLumiSection_=true;
-      // MARK! input metafile merge
-      if (lastOpenedLumi_ > 1) {
-    	  // TODO re-enable
-  	    //mergeInputMetafilesForLumi();
-      }
-      break;
-    }
-    //loop again
-    usleep(100000);
-  }
-  while (1/*!edm::shutdown_flag*/);
-
-  return true;
-
+	return true;
 }
 
 bool
-FedRawDataInputSource::grabNextFile(boost::filesystem::path const& rawdir,boost::filesystem::path const& nextFile)
+FedRawDataInputSource::grabNextFile(std::vector<boost::filesystem::path>& files,boost::filesystem::path const& nextFile, std::vector<boost::filesystem::path>& badFiles)
 {
-  std::vector<boost::filesystem::path> files;
+	try
+	{
+		std::sort(files.begin(), files.end());
+		std::cout << " rename " << files.front() << " to " << nextFile << std::endl;
 
-  boost::filesystem::directory_iterator itEnd;
-  //first look into last LS dir
-  try
-  {
-    for ( boost::filesystem::directory_iterator it(rawdir.string());
-          it != itEnd; ++it)
-    {
-      if ( it->path().extension() == ".raw" )
-        files.push_back(*it);
-    }
+		//RENAME
+		std::cout << "0. RENAME @ BU " << files.front().string()  << " to " << nextFile << std::endl;
+		int rc = rename(files.front().string().c_str(), nextFile.string().c_str());
+		if (rc != 0) {
+			std::cout << "BAD FILE FOUND!!!!!! " << files.front().string() << std::endl;
+			badFiles.push_back(files.front());
+			throw std::runtime_error("Cannot RENAME DATA file, rc is != 0!");
+		}
+
+
+		// FIXME DOESN'T WORK OVER NFS!!!!!!
+		//boost::filesystem::rename(files.front(), nextFile);
+
+		//GET FD
+		/*
+		std::cout << "1. Opening file to get FD = " << files.front().string() << std::endl;
+		int fd = open(files.front().string().c_str(), O_WRONLY);
+		if (fd == -1) {
+			badFiles.push_back(files.front());
+			throw std::runtime_error("Cannot open DATA file, FD = -1!");
+		}
+
+		//LOCK
+		std::cout << "2. Locking NONBLOCKING file = " << files.front().string() << std::endl;
+		int result = flock(fd, LOCK_EX | LOCK_NB);
+		if (result == -1) {
+			badFiles.push_back(files.front());
+			throw std::runtime_error("Cannot lock DATA file, flock result is = -1!");
+		}
+
+		//MOVE
+		std::cout << "3. MOVE TO FU. From " << files.front().string()  << " to " << nextFile.string() << std::endl;
+		string mvCmd = "mv " + files.front().string() + " " + nextFile.string();
+		std::cout << " Running move cmd = " << mvCmd << std::endl;
+		int rc = system(mvCmd.c_str());
+		std::cout << " return code = " << rc << std::endl;
+		if (rc != 0) {
+			//badFiles.push_back(files.front());
+			//throw std::runtime_error("Cannot move DATA file, rc is != 0! THIS SHOULD NEVER HAPPEN! Exiting...");
+			std::cout << "MOVE TO FU FAILED! THIS SHOULD NEVER HAPPEN IF LOCKING WORKS! EXITING..." << std::endl;
+			exit(-1);
+		}
+
+		//to avoid .nfs leftover files
+		close(fd);
+		*/
+
+		// LOCK USING FCNTL
+
+		//struct flock fl;
+		//int fd;
+
+		//fl.l_type   = F_WRLCK;  /* F_RDLCK, F_WRLCK, F_UNLCK    */
+		//fl.l_whence = SEEK_SET; /* SEEK_SET, SEEK_CUR, SEEK_END */
+		//fl.l_start  = 0;        /* Offset from l_whence         */
+		//fl.l_len    = 0;        /* length, 0 = to EOF           */
+		//fl.l_pid    = getpid(); /* our PID                      */
+		/*
     
-    if ( files.empty() )
-    {
-      return false;
-    }
-    else
-    {
-      std::sort(files.begin(), files.end());
-      std::cout << " rename " << files.front() << " to " << nextFile << std::endl;
-      boost::filesystem::rename(files.front(), nextFile);
+		fd = open(files.front().string().c_str(), O_WRONLY);
+		std::cout << "0. FD is =   " << fd << std::endl;
 
-      // MARK! grab json file too, if previous didn't throw
+		std::cout << "1. LOCK  " << files.front().string() << std::endl;
+		int rc = fcntl(fd, F_SETLK, &fl);  // F_GETLK, F_SETLK, F_SETLKW
+		if (errno == EAGAIN) std::cout << "EAGAIN"<< std::endl;
+		if (errno == EACCES) std::cout << "EACCESS"<< std::endl;
+		if (errno == EBADF) std::cout << "EBADF"<< std::endl;
+		if (errno == EDEADLK) std::cout << "EDEADLK"<< std::endl;
+		if (errno == EFAULT) std::cout << "EFAULT"<< std::endl;
+		if (errno == EINTR) std::cout << "EINTR"<< std::endl;
+		if (errno == EINVAL) std::cout << "EINVAL"<< std::endl;
+		if (errno == EMFILE) std::cout << "EMFILE"<< std::endl;
+		if (errno == ENOLOCCK) std::cout << "ENLOCK"<< std::endl;
+		if (errno == EPERM) std::cout << "EPERM"<< std::endl;
+		if (rc == -1) {
+			badFiles.push_back(files.front());
+			throw std::runtime_error("Cannot LOCK data file, rc is != 0!");
+		}
+		*/
 
-      boost::filesystem::path jsonSourcePath(files.front());
-      boost::filesystem::path jsonDestPath(nextFile);
-      boost::filesystem::path jsonExt(".jsn");
-      jsonSourcePath.replace_extension(jsonExt);
-      jsonDestPath.replace_extension(jsonExt);
+		//std::cout << "Sleeping for 1 MINUTE!!!" << std::endl;
+		//::sleep(60);
 
-      std::cout << " JSON rename " << jsonSourcePath << " to " << jsonDestPath << std::endl;
+		// OPEN
+		/*
+		 std::cout << "3. TRY TO OPEN  " << files.front().string() << std::endl;
+		 std::ifstream grabbedFile(files.front().string());
+		 if (grabbedFile.is_open()) {
+		 grabbedFile.close();
+		 }
+		 else {
+		 // the file was not really grabbed...
+		 badFiles.push_back(files.front());
+		 throw std::runtime_error("Cannot OPEN data file file! This should never happed!!");
+		 exit(-1);
+		 }
+		 */
 
-      boost::filesystem::rename(jsonSourcePath, jsonDestPath);
+		//COPY
+		/*
+		 std::cout << "4. COPY TO FU. From " << files.front().string()  << " to " << nextFile.string() << std::endl;
+		 string copyCmd = "cp " + files.front().string() + " " + nextFile.string();
+		 std::cout << " Running copy cmd = " << copyCmd << std::endl;
+		int rc = system(copyCmd.c_str());
+		std::cout << " return code = " << rc << std::endl;
+		if (rc != 0) {
+			badFiles.push_back(files.front());
+			throw std::runtime_error("Cannot copy DATA file, rc is != 0!");
+		}
+		*/
 
-      openFile(nextFile);
-      return true;
-    }
-  }
-  catch (const boost::filesystem::filesystem_error& ex)
-  {
-    // Another process grabbed the file.
-  }
-  return false;
+		//UNLOCK
+		/*
+		std::cout << "6. UNLOCKING file = " << files.front().string() << std::endl;
+		result = flock(fd, LOCK_UN);
+		if (result == -1) {
+			badFiles.push_back(files.front());
+			throw std::runtime_error("Cannot UNLOCK DATA file, flock result is = -1!");
+		}
+		*/
+
+		// REMOVE FROM BU
+		/*
+		string rmCmd = "rm " + renamed;
+		std::cout << "7.  REMOVE FROM BU = " << rmCmd << std::endl;
+		rc = system(rmCmd.c_str());
+		std::cout << " return code = " << rc << std::endl;
+		if (rc != 0) {
+			badFiles.push_back(files.front());
+			// ALSO NEED TO REMOVE COPIED FILE (FU)
+			string rmInitialFileCmd = "rm " + nextFile.string();
+			system(rmInitialFileCmd.c_str());
+			throw std::runtime_error("Cannot REMOVE DATA file, rc is != 0!");
+		}
+		*/
+
+		// MARK! grab json file too, if previous didn't throw
+		// assemble json path on /hlt/data
+		boost::filesystem::path nextFileJson = workingDirectory_;
+		//std::ostringstream fileName;
+		//nextFile /= fileName.str();
+		boost::filesystem::path jsonSourcePath(files.front());
+		boost::filesystem::path jsonDestPath(nextFileJson);
+		boost::filesystem::path jsonExt(".jsn");
+		jsonSourcePath.replace_extension(jsonExt);
+
+		boost::filesystem::path jsonTempPath(jsonDestPath);
+
+		//jsonTempPath.remove_filename();
+		std::ostringstream fileNameWithPID;
+		fileNameWithPID << jsonSourcePath.stem().string() << "_" << getpid() << ".jsn";
+		boost::filesystem::path filePathWithPID(fileNameWithPID.str());
+		//jsonTempPath /= jsonSourcePath.filename();
+		jsonTempPath /= filePathWithPID;
+		std::cout << " JSON rename " << jsonSourcePath << " to " << jsonTempPath << std::endl;
+
+		//boost::filesystem::rename(jsonSourcePath, jsonTempPath);
+		//move JSON
+		string mvCmd = "mv " + jsonSourcePath.string() + " " + jsonTempPath.string();
+		std::cout << " Running copy cmd = " << mvCmd << std::endl;
+		rc = system(mvCmd.c_str());
+		std::cout << " return code = " << rc << std::endl;
+		if (rc != 0) {
+			throw std::runtime_error("Cannot copy JSON file, rc is != 0!");
+		}
+
+		openFile(nextFile);
+		return true;
+	}
+
+	catch (const boost::filesystem::filesystem_error& ex)
+	{
+		// Input dir gone?
+		std::cout << "BOOST FILESYSTEM ERROR CAUGHT: " << ex.what() << std::endl;
+		std::cout << "Maybe the BU run dir disappeared? Ending process..." << std::endl;
+		exit(0);
+	}
+	catch (std::runtime_error e)
+	{
+		// Another process grabbed the file and NFS did not register this
+		std::cout << "Exception text: " << e.what() << std::endl;
+	}
+	catch (std::exception e)
+	{
+		// BU run directory disappeared?
+		std::cout << "SOME OTHER EXCEPTION OCCURED!!!! ->" << e.what() << std::endl;
+	}
+	return false;
 }
 
 
 bool
 FedRawDataInputSource::runEnded() const
 {
-  boost::filesystem::path endOfRunMarker = runDirectory_;
+  boost::filesystem::path endOfRunMarker = buRunDirectory_;
   endOfRunMarker /= "EndOfRun.jsn";
   return boost::filesystem::exists(endOfRunMarker);
 }
@@ -457,12 +569,18 @@ void FedRawDataInputSource::createWorkingDirectory() {
   char thishost[256];
   gethostname(thishost,255);
   std::ostringstream myDir;
-  myDir << std::setfill('0') << std::setw(5) << thishost << "_" << getpid();
-  workingDirectory_ = runBaseDirectory_;
+
+  // host_pid dir
+  //myDir << std::setfill('0') << std::setw(5) << thishost << "_" << getpid();
+
+  // host_DATA dir
+  myDir << std::setfill('0') << std::setw(5) << thishost << "_DATA";
+  workingDirectory_ = localRunBaseDirectory_;
 
   boost::filesystem::directory_iterator itEnd;
   bool foundHLTdir=false;
-  for ( boost::filesystem::directory_iterator it(runBaseDirectory_);
+  bool foundHostDir = false;
+  for ( boost::filesystem::directory_iterator it(localRunBaseDirectory_);
       it != itEnd; ++it)
   {
     if ( boost::filesystem::is_directory(it->path()) &&
@@ -470,39 +588,49 @@ void FedRawDataInputSource::createWorkingDirectory() {
       foundHLTdir=true;
   }
   workingDirectory_ /= "hlt";
-  if (!foundHLTdir)
+  if (!foundHLTdir) {
     boost::filesystem::create_directories(workingDirectory_);
+    // MARK! TODO remove
+    //std::cout << "sleeping for 2 sec ------> THIS HAS TO BE REMOVED!" << std::endl;
+    //sleep(2);
+  }
+
+  for ( boost::filesystem::directory_iterator it(workingDirectory_);
+        it != itEnd; ++it)
+    {
+      if ( boost::filesystem::is_directory(it->path()) &&
+  	it->path().string().find(myDir.str()) !=std::string::npos)
+      foundHostDir=true;
+    }
+
   workingDirectory_ /= myDir.str();
-  std::cout << " workDir " << workingDirectory_ << "will be created." << std::endl;
-  boost::filesystem::create_directories(workingDirectory_);
+
+  if (!foundHostDir) {
+	  std::cout << " workDir " << workingDirectory_ << "will be created." << std::endl;
+	  boost::filesystem::create_directories(workingDirectory_);
+  }
   workDirCreated_=true;
+
+  // also create MON directory
+  std::ostringstream monDir;
+  monDir << std::setfill('0') << std::setw(5) << thishost << "_MON";
+  boost::filesystem::path monDirectory = localRunBaseDirectory_;
+
+  monDirectory /= "hlt";
+  monDirectory /= monDir.str();
+
+  // now at /root/run/hlt/host_MON
+
+  bool foundMonDir = false;
+  if ( boost::filesystem::is_directory(monDirectory))
+	  foundMonDir=true;
+  if (!foundMonDir) {
+	  std::cout << "<MON> DIR NOT FOUND! CREATING!!!" << std::endl;
+	  boost::filesystem::create_directories(monDirectory);
+  }
+
 }
 
-// TODO fix implementation
-int
-FedRawDataInputSource::mergeInputMetafilesForLumi() const
-{
-	string inputFolder = workingDirectory_.string();
-	std::stringstream ss;
-	ss << "inputLS" << lastOpenedLumi_ -1 << ".jsn";
-	string outputFile = workingDirectory_.string() + "/" + ss.str();
-	vector<string> inputJSONFilePaths;
-
-	std::cout << " >>>>>>>>->>>>>>>> Input metafile merge for LS: " << lastOpenedLumi_ - 1 << "; input folder=" << inputFolder
-			<< " outputFile=" << outputFile << std::endl;
-
-	string outcomeString;
-	FileIO::getFileList(inputFolder, inputJSONFilePaths, outcomeString, ".jsn", "^[0-9]+$");
-
-	int outcome = JSONFileCollector::mergeFiles(inputJSONFilePaths, outputFile, false);
-
-	// FIXME this? fails on multiprocess
-	// delete all input files
-	for (auto a : inputJSONFilePaths)
-		std::remove(a.c_str());
-
-	return outcome;
-}
 
 // define this class as an input source
 DEFINE_FWK_INPUT_SOURCE(FedRawDataInputSource);
