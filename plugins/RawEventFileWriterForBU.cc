@@ -1,4 +1,4 @@
-// $Id: RawEventFileWriterForBU.cc,v 1.1.2.3 2013/01/16 11:33:54 aspataru Exp $
+// $Id: RawEventFileWriterForBU.cc,v 1.1.2.4 2013/01/16 17:45:45 aspataru Exp $
 
 #include "RawEventFileWriterForBU.h"
 #include "FWCore/Utilities/interface/Adler32Calculator.h"
@@ -27,14 +27,14 @@ RawEventFileWriterForBU::RawEventFileWriterForBU(edm::ParameterSet const& ps): l
 	lumiMon_ = new DataPointMonitor(lumiMonParams, jsonDefLocation_);
 
 
-	perFileEventCount_ = 0;
+	perFileEventCount_.value() = 0;
 	perFileEventCount_.setName("NEvents");
 
     // create a vector of all monitorable parameters to be passed to the monitor
     vector<JsonMonitorable*> fileMonParams;
     fileMonParams.push_back(&perFileEventCount_);
 
-    perFileMon_ = new DataPointMonitor(lumiMonParams, jsonDefLocation_);
+    perFileMon_ = new DataPointMonitor(fileMonParams, jsonDefLocation_);
 
 }
 
@@ -146,7 +146,7 @@ void RawEventFileWriterForBU::initialize(std::string const& destinationDir, std:
 	  string path = ss.str();
 	  FileIO::writeStringToFile(path, output);
 
-	  std::cout << "Wrote JSON input file: " << path << std::endl;
+	  std::cout << "Wrote JSON input file: " << path << " with perFileEventCount = " << perFileEventCount_.value() << std::endl;
 
 	  perFileEventCount_.value() = 0;
 

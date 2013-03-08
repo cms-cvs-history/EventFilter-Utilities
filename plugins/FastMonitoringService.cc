@@ -21,8 +21,9 @@ namespace evf{
   	,sleepTime_(iPS.getUntrackedParameter<int>("sleepTime", 1))
     ,rootDirectory_(iPS.getUntrackedParameter<string>("rootDirectory", "/data"))
     ,defPath_(iPS.getUntrackedParameter<string>("definitionPath", "/tmp/def.jsd"))
-    ,fastName_(iPS.getUntrackedParameter<string>("fastName", "microstates.fast"))
-    ,fullName_(iPS.getUntrackedParameter<string>("fullPath", "microstatesPerLUMI.jsh"))
+    ,fastName_(iPS.getUntrackedParameter<string>("fastName", "states"))
+    ,slowName_(iPS.getUntrackedParameter<string>("slowName", "lumi"))
+    ,firstLumi_(true)
   {
     fmt_.m_data.macrostate_=FastMonitoringThread::sInit;
     fmt_.m_data.ministate_=&nopath_;
@@ -87,11 +88,12 @@ namespace evf{
     char thishost[256];
     gethostname(thishost,255);
     std::ostringstream myDir;
-    myDir << std::setfill('0') << std::setw(5) << thishost << "_" << getpid();
+    //myDir << std::setfill('0') << std::setw(5) << thishost << "_" << getpid();
+    myDir << std::setfill('0') << std::setw(5) << thishost << "_MON";
     boost::filesystem::path workingDirectory_ = runDirectory;
     /*
     boost::filesystem::directory_iterator itEnd2;
-    //bool foundHLTdir=false;
+    //
     for ( boost::filesystem::directory_iterator it(runDirectory);
     		it != itEnd2; ++it)
     {
@@ -101,20 +103,30 @@ namespace evf{
     }
     */
     workingDirectory_ /= "hlt";
-    //if (!foundHLTdir)
-    //	std::cout << "<HLT> DIR NOT FOUND!" << std::endl;
-    	//boost::filesystem::create_directories(workingDirectory_);
     workingDirectory_ /= myDir.str();
 
-    string fastPath, fullPath;
+    // now at /root/run/hlt/host_MON
 
+    bool foundMonDir = false;
+    if ( boost::filesystem::is_directory(workingDirectory_))
+    	foundMonDir=true;
+    if (!foundMonDir) {
+    	std::cout << "<MON> DIR NOT FOUND!" << std::endl;
+        //boost::filesystem::create_directories(workingDirectory_);
+    }
+
+    string fastPath, slowPath;
+    std::ostringstream fastFileName, slowFileName;
+
+    fastFileName << fastName_ << "_" << getpid() << ".fast";
     boost::filesystem::path fast = workingDirectory_;
-    fast /= fastName_;
+    fast /= fastFileName.str();
     fastPath = fast.string();
 
-    boost::filesystem::path full = workingDirectory_;
-    full /= fullName_;
-    fullPath = full.string();
+    slowFileName << slowName_ << "_" << getpid() << ".jsh";
+    boost::filesystem::path slow = workingDirectory_;
+    slow /= slowFileName.str();
+    slowPath = slow.string();
 
     /*
      * initialize the fast monitor with:
@@ -129,12 +141,12 @@ namespace evf{
      *
      */
     std::cout << "FastMonitoringService: initializing FastMonitor with: "
-    		<< defPath_ << " " << fastPath << " " << fullPath << " "
+    		<< defPath_ << " " << fastPath << " " << slowPath << " "
     		<< FastMonitoringThread::MCOUNT << " " << encPath_.current_ + 1 << " "
     		<< encModule_.current_ + 1<< std::endl;
 
     fmt_.m_data.jsonMonitor_.reset(
-			new FastMonitor(monParams, defPath_, fastPath, fullPath,
+			new FastMonitor(monParams, defPath_, fastPath, slowPath,
 					FastMonitoringThread::MCOUNT, encPath_.current_ + 1,
 					encModule_.current_ + 1));
 
@@ -219,14 +231,23 @@ namespace evf{
 
   void FastMonitoringService::preBeginLumi(edm::LuminosityBlockID const& iID, edm::Timestamp const& iTime)
   {
+	  std::cout << "FastMonitoringService: Pre-begin LUMI: " << iID.luminosityBlock() << std::endl;
 	  // MARK! Service .json output per lumi
-	  fmt_.monlock_.lock();
-	  fmt_.m_data.lumisection_++;
-	  std::cout << "FastMonitoringService: Pre-begin LUMI: " << fmt_.m_data.lumisection_ << std::endl;
-
-	  if (fmt_.m_data.lumisection_ > 1) {
-		  fmt_.m_data.jsonMonitor_->outputFullHistoDataPoint(fmt_.m_data.lumisection_ - 1);
+	  if (firstLumi_)
+	  {
+		  firstLumi_ = false;
+		  return;
 	  }
+
+	  fmt_.monlock_.lock();
+
+	  fmt_.m_data.lumisection_ = (unsigned int) iID.luminosityBlock();
+	  // TODO remove
+	  std::cout << ">>> >>> FastMonitoringService: processed event count for the previous lumi = " << fmt_.m_data.processedJ_.value() << std::endl;
+	  fmt_.m_data.jsonMonitor_->snap();
+	  fmt_.m_data.jsonMonitor_->outputFullHistoDataPoint(fmt_.m_data.lumisection_ - 1);
+
+	  fmt_.m_data.processedJ_ = 0;
 	  fmt_.monlock_.unlock();
   }
 
@@ -240,6 +261,9 @@ namespace evf{
   {
     //    boost::mutex::scoped_lock sl(lock_);
     fmt_.m_data.microstate_ = &reservedMicroStateNames[mFwkOvh];
+    fmt_.monlock_.lock();
+    fmt_.m_data.processedJ_.value()++;
+    fmt_.monlock_.unlock();
   }
   void FastMonitoringService::preSource()
   {

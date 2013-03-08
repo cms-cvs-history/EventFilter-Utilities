@@ -141,7 +141,7 @@ namespace evf{
 			fmt_.m_data.microstateJ_ = encModule_.encode(
 					fmt_.m_data.microstate_);
 			// FIXME update n_processed
-			fmt_.m_data.processedJ_ = 0;
+			//fmt_.m_data.processedJ_ = 0;
 
 			fmt_.m_data.jsonMonitor_->snap();
 			fmt_.monlock_.unlock();
@@ -157,8 +157,8 @@ namespace evf{
       Encoding encPath_;
 
       int sleepTime_;
-      string rootDirectory_, defPath_, fastName_, fullName_;
-
+      string rootDirectory_, defPath_, fastName_, slowName_;
+      bool firstLumi_;
     };
 
 }
