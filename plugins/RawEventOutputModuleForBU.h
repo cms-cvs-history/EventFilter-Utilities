@@ -1,6 +1,7 @@
 #ifndef IOPool_Streamer_RawEventOutputModuleForBU_h
 #define IOPool_Streamer_RawEventOutputModuleForBU_h
 
+#include "FWCore/Framework/interface/EventPrincipal.h"
 #include "FWCore/Framework/interface/OutputModule.h"
 #include "FWCore/Framework/interface/LuminosityBlockPrincipal.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
