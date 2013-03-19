@@ -5,7 +5,7 @@
 //
 //           EM - data da destinarsi
 ////////////////////////////////////////////////////////////////////////////////
-
+#ifdef RAW_EVENT_SOURCE_FROM_BU_IS_READY
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/Event.h"
@@ -254,3 +254,5 @@ bool RawEventSourceFromBU::openFile()
 // define this class as an input source
 ////////////////////////////////////////////////////////////////////////////////
 DEFINE_FWK_INPUT_SOURCE(RawEventSourceFromBU);
+
+#endif
