@@ -1,4 +1,4 @@
-// $Id: RawEventFileWriterForBU.cc,v 1.1.2.4 2013/01/16 17:45:45 aspataru Exp $
+// $Id: RawEventFileWriterForBU.cc,v 1.1.2.5 2013/03/08 13:06:41 aspataru Exp $
 
 #include "RawEventFileWriterForBU.h"
 #include "FWCore/Utilities/interface/Adler32Calculator.h"
@@ -10,6 +10,30 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <signal.h>
+
+
+RawEventFileWriterForBU* RawEventFileWriterForBU::instance = 0;
+
+void RawEventFileWriterForBU::handler(int s){
+	printf("Caught signal %d. Writing EOR file!\n",s);
+	if (destinationDir_.size() > 0)
+	{
+		// DELETE RUN DIR ON BU
+		/*
+		std::string rmCommand = "rm -rf ";
+		std::string runDir = destinationDir_.substr(0, destinationDir_.size() - (destinationDir_.size() - destinationDir_.rfind("/")));
+		rmCommand += runDir;
+		int rc = system(rmCommand.c_str());
+		printf("Executed command %s. Return code is %d\n", rmCommand.c_str(), rc);
+		*/
+		// CREATE EOR file
+		string path = destinationDir_ + "/" + "eor.eor";
+		string output = "EOR";
+		FileIO::writeStringToFile(path, output);
+	}
+	exit(0);
+}
 
 RawEventFileWriterForBU::RawEventFileWriterForBU(edm::ParameterSet const& ps): lumiMon_(0), outfd_(0),
 	jsonDefLocation_(ps.getUntrackedParameter<string>("jsonDefLocation",""))
@@ -35,12 +59,21 @@ RawEventFileWriterForBU::RawEventFileWriterForBU(edm::ParameterSet const& ps): l
     fileMonParams.push_back(&perFileEventCount_);
 
     perFileMon_ = new DataPointMonitor(fileMonParams, jsonDefLocation_);
+    instance = this;
+
+    // SIGINT Handler
+    struct sigaction sigIntHandler;
+    sigIntHandler.sa_handler = RawEventFileWriterForBU::staticHandler;
+    sigemptyset(&sigIntHandler.sa_mask);
+    sigIntHandler.sa_flags = 0;
+    sigaction(SIGINT, &sigIntHandler, NULL);
 
 }
 
 RawEventFileWriterForBU::RawEventFileWriterForBU(std::string const& fileName)
 {
-  //  initialize(fileName);
+	//  initialize(fileName);
+
 }
 
 RawEventFileWriterForBU::~RawEventFileWriterForBU()
@@ -185,4 +218,3 @@ void RawEventFileWriterForBU::endOfLS(int ls)
 
 	perLumiEventCount_ = 0;
 }
-

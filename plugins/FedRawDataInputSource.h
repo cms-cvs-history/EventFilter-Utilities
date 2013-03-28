@@ -70,6 +70,7 @@ private:
   bool newLumiSection_;
   int lastOpenedLumi_;
   boost::filesystem::path currentDataDir_;
+  bool eorFileSeen_;
 
 };
 

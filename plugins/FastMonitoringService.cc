@@ -24,13 +24,15 @@ namespace evf{
     ,fastName_(iPS.getUntrackedParameter<string>("fastName", "states"))
     ,slowName_(iPS.getUntrackedParameter<string>("slowName", "lumi"))
     ,firstLumi_(true)
+    ,lastLumiSeen_(0)
   {
     fmt_.m_data.macrostate_=FastMonitoringThread::sInit;
     fmt_.m_data.ministate_=&nopath_;
     fmt_.m_data.microstate_=&reservedMicroStateNames[mInvalid];
     fmt_.m_data.lumisection_ = 0;
     reg.watchPreModuleBeginJob(this,&FastMonitoringService::preModuleBeginJob);  
-    reg.watchPreBeginLumi(this,&FastMonitoringService::preBeginLumi);  
+    reg.watchPreBeginLumi(this,&FastMonitoringService::preBeginLumi);
+    reg.watchPreEndLumi(this,&FastMonitoringService::preEndLumi);
     reg.watchPrePathBeginRun(this,&FastMonitoringService::prePathBeginRun);
     reg.watchPostBeginJob(this,&FastMonitoringService::postBeginJob);
     reg.watchPostBeginRun(this,&FastMonitoringService::postBeginRun);
@@ -123,7 +125,7 @@ namespace evf{
     fast /= fastFileName.str();
     fastPath = fast.string();
 
-    slowFileName << slowName_ << "_" << getpid() << ".jsh";
+    slowFileName << slowName_ << "_" << getpid() << ".jsn";
     boost::filesystem::path slow = workingDirectory_;
     slow /= slowFileName.str();
     slowPath = slow.string();
@@ -146,9 +148,7 @@ namespace evf{
     		<< encModule_.current_ + 1<< std::endl;
 
     fmt_.m_data.jsonMonitor_.reset(
-			new FastMonitor(monParams, defPath_, fastPath, slowPath,
-					FastMonitoringThread::MCOUNT, encPath_.current_ + 1,
-					encModule_.current_ + 1));
+			new FastMonitor(monParams, defPath_, fastPath, slowPath));
 
     fmt_.start(&FastMonitoringService::dowork,this);
   }
@@ -245,10 +245,17 @@ namespace evf{
 	  // TODO remove
 	  std::cout << ">>> >>> FastMonitoringService: processed event count for the previous lumi = " << fmt_.m_data.processedJ_.value() << std::endl;
 	  fmt_.m_data.jsonMonitor_->snap();
-	  fmt_.m_data.jsonMonitor_->outputFullHistoDataPoint(fmt_.m_data.lumisection_ - 1);
+	  // FIXME !!! previous lumi that was processed, not current - 1 (there may be missing LS in between)
+	  fmt_.m_data.jsonMonitor_->outputFullHistoDataPoint(/*fmt_.m_data.lumisection_ - 1*/lastLumiSeen_);
 
 	  fmt_.m_data.processedJ_ = 0;
 	  fmt_.monlock_.unlock();
+  }
+
+  void FastMonitoringService::preEndLumi(edm::LuminosityBlockID const& iID, edm::Timestamp const& iTime)
+  {
+	  std::cout << "FastMonitoringService: LUMI: " << iID.luminosityBlock() << " ended! Setting as last seen." << std::endl;
+	  lastLumiSeen_ = (unsigned int) iID.luminosityBlock();
   }
 
   void FastMonitoringService::preEventProcessing(const edm::EventID& iID,

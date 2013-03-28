@@ -40,7 +40,8 @@ fileIndex_(0),
 fileStream_(0),
 workDirCreated_(false),
 eventID_(),
-lastOpenedLumi_(0)
+lastOpenedLumi_(0),
+eorFileSeen_(false)
 {
   buRunDirectory_ = boost::filesystem::path(pset.getUntrackedParameter<std::string>("rootBUDirectory"));
   findRunDir( pset.getUntrackedParameter<std::string>("rootFUDirectory") );
@@ -295,45 +296,63 @@ FedRawDataInputSource::searchForNextFile(boost::filesystem::path const& nextFile
 
 	do
 	{
-		currentDataDir_ = buRunDirectory_;
-		files.clear();
-		for ( boost::filesystem::directory_iterator it(currentDataDir_.string());
-				it != itEnd; ++it)
-		{
-			if ( it->path().extension() == ".raw")
+		try {
+			currentDataDir_ = buRunDirectory_;
+			files.clear();
+			for ( boost::filesystem::directory_iterator it(currentDataDir_.string());
+					it != itEnd; ++it)
 			{
-				bool fileIsBad = false;
-				for (unsigned int i = 0; i < badFiles.size(); i++)
+				if ( it->path().extension() == ".raw")
 				{
-					std::cout << "Comparing against bad file list: " << badFiles[i].string() << " / " << it->path().string() << std::endl;
-					if ((it->path() == badFiles[i]))
+					bool fileIsBad = false;
+					for (unsigned int i = 0; i < badFiles.size(); i++)
 					{
-						std::cout << "FILE IS BAD = true" <<std::endl;
-						fileIsBad = true;
-						break;
+						std::cout << "Comparing against bad file list: " << badFiles[i].string() << " / " << it->path().string() << std::endl;
+						if ((it->path() == badFiles[i]))
+						{
+							std::cout << "FILE IS BAD = true" <<std::endl;
+							fileIsBad = true;
+							break;
+						}
 					}
+					if (fileIsBad)
+						std::cout << "Ignoring bad file =" << it->path().string() << std::endl;
+					else
+						files.push_back(*it);
 				}
-				if (fileIsBad)
-					std::cout << "Ignoring bad file =" << it->path().string() << std::endl;
-				else
-					files.push_back(*it);
+				else if ( it->path().extension() == ".eor")
+				{
+					std::cout << "EOR file seen!" << std::endl;
+					eorFileSeen_ = true;
+				}
 			}
-		}
-		if (files.size() > 0)
-		{
-			std::cout << "grabbin next file" <<std::endl;
-			if (grabNextFile(files,nextFile,badFiles))
+			if (files.size() > 0)
 			{
-				badFiles.clear();
-				return true;
+				std::cout << "grabbin next file" <<std::endl;
+				if (grabNextFile(files,nextFile,badFiles))
+				{
+					badFiles.clear();
+					return true;
+				}
 			}
-		}
-		else {
-			std::cout << "NOTHING TO GRAB! ... retrying ..." << std::endl;
+			else if (!eorFileSeen_){
+				std::cout << "NOTHING TO GRAB! ... retrying ..." << std::endl;
+			}
+			else {
+				std::cout << "EOR file seen, and no more raw files to grab... BYE BYE! (exit 0)" << std::endl;
+				exit(0);
+			}
+
+			//loop again
+			usleep(300000);
 		}
 
-		//loop again
-		usleep(300000);
+		catch(std::exception e) {
+			// Input dir gone?
+			std::cout << "std::exception caught: " << e.what() << std::endl;
+			std::cout << "Maybe the BU run dir disappeared? Ending process with code 0..." << std::endl;
+			exit(0);
+		}
 	}
 	while (1/*!edm::shutdown_flag*/);
 
@@ -522,7 +541,7 @@ FedRawDataInputSource::grabNextFile(std::vector<boost::filesystem::path>& files,
 	{
 		// Input dir gone?
 		std::cout << "BOOST FILESYSTEM ERROR CAUGHT: " << ex.what() << std::endl;
-		std::cout << "Maybe the BU run dir disappeared? Ending process..." << std::endl;
+		std::cout << "Maybe the BU run dir disappeared? Ending process with code 0..." << std::endl;
 		exit(0);
 	}
 	catch (std::runtime_error e)

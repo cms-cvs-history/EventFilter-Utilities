@@ -1,7 +1,7 @@
 #ifndef EVFRAWEVENTFILEWRITERFORBU
 #define EVFRAWEVENTFILEWRITERFORBU
 
-// $Id: RawEventFileWriterForBU.h,v 1.1.2.3 2012/11/28 18:18:42 smorovic Exp $
+// $Id: RawEventFileWriterForBU.h,v 1.1.2.4 2013/01/16 17:45:44 aspataru Exp $
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "IOPool/Streamer/interface/FRDEventMessage.h"
@@ -40,6 +40,10 @@ class RawEventFileWriterForBU
   void initialize(std::string const& destinationDir, std::string const& name, int ls);
   void endOfLS(int ls);
   bool sharedMode() const {return false;}
+
+  void handler(int s);
+  static void staticHandler(int s) { instance->handler(s); }
+
  private:
 
   IntJ perLumiEventCount_;
@@ -56,6 +60,8 @@ class RawEventFileWriterForBU
 
   uint32 adlera_;
   uint32 adlerb_;
+
+  static RawEventFileWriterForBU* instance;
 
 };
 #endif

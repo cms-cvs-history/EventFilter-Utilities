@@ -110,6 +110,7 @@ namespace evf{
       void postEndJob();
 
       void preBeginLumi(edm::LuminosityBlockID const& iID, edm::Timestamp const& iTime);
+      void preEndLumi(edm::LuminosityBlockID const& iID, edm::Timestamp const& iTime);
       void preProcessPath(const std::string& pathName);
       void preEventProcessing(const edm::EventID&, const edm::Timestamp&);
       void postEventProcessing(const edm::Event&, const edm::EventSetup&);
@@ -159,6 +160,7 @@ namespace evf{
       int sleepTime_;
       string rootDirectory_, defPath_, fastName_, slowName_;
       bool firstLumi_;
+      unsigned int lastLumiSeen_;
     };
 
 }
