@@ -10,6 +10,8 @@
 
 #include <vector>
 #include <string>
+#include "DataPoint.h"
+#include "DataPointDefinition.h"
 
 namespace jsoncollector {
 class JSONFileCollector {
@@ -17,8 +19,18 @@ public:
 	/**
 	 * Collects input from the specified JSON file paths and creates an output JSON file at the specified output path
 	 */
-	static int mergeFiles(std::vector<std::string>& inputJSONFilePaths,
+	static int mergeJSONFiles(std::vector<std::string>& inputJSONFilePaths,
 			std::string& outputFilePath, bool formatForDisplay);
+
+	/**
+	 * Collects CSV fast files and creates a JSON histogram of contents
+	 */
+	static int mergeFastFiles(std::vector<std::string>& inputFiles,
+			std::string& outputFilePath, bool formatForDisplay);
+
+private:
+	static bool displayFormat(DataPoint* dp, std::string& output);
+
 };
 }
 

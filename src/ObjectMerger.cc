@@ -21,7 +21,7 @@ using std::cout;
 using std::endl;
 
 DataPoint* ObjectMerger::merge(vector<DataPoint*> objectsToMerge,
-		string& outcomeMessage) {
+		string& outcomeMessage, bool onlyHistos) {
 	// vector of vectors containing all data in datapoints
 	vector<vector<string> > mergedData;
 
@@ -30,14 +30,14 @@ DataPoint* ObjectMerger::merge(vector<DataPoint*> objectsToMerge,
 		return NULL;
 
 	// 1. Get the definition of these data points
-	DataPointDefinition* dpd = getDataPointDefinitionFor(
-			objectsToMerge[0]->getDefinition());
+	DataPointDefinition dpd;
+	getDataPointDefinitionFor(objectsToMerge[0]->getDefinition(), dpd);
 
 	// 1.1 Check if definition has exact no of elements specified
-	if (objectsToMerge[0]->getData().size() != dpd->getLegend().size()) {
+	if (objectsToMerge[0]->getData().size() != dpd.getLegend().size()) {
 		outcomeMessage
 				= "JSON files and DEFINITION do not have the same number of elements in vectors!";
-		delete dpd;
+		//delete dpd;
 		return NULL;
 	}
 
@@ -51,11 +51,24 @@ DataPoint* ObjectMerger::merge(vector<DataPoint*> objectsToMerge,
 		mergedData.push_back(metricVector);
 	}
 
-	// 3. Apply defined operation for each measurement in all data poutcomeMessageoints
+	// 3. Apply defined operation for each measurement in all data points
 	vector<string> outputValues;
 	for (unsigned int i = 0; i < mergedData.size(); i++) {
-		string strVal = applyOperation(mergedData[i],
-				dpd->getLegendFor(i).getOperation());
+		string strVal = "";
+		if (onlyHistos) {
+			if (Utils::matchExactly(dpd.getLegendFor(i).getOperation(),
+					Operations::HISTO)) {
+				strVal = applyOperation(mergedData[i],
+						dpd.getLegendFor(i).getOperation());
+			} else {
+				strVal = mergedData[i][mergedData[i].size() - 1];
+			}
+
+		} else {
+			strVal = applyOperation(mergedData[i],
+					dpd.getLegendFor(i).getOperation());
+
+		}
 		outputValues.push_back(strVal);
 	}
 
@@ -72,124 +85,54 @@ DataPoint* ObjectMerger::merge(vector<DataPoint*> objectsToMerge,
 	DataPoint* outputDP = new DataPoint(source, definition, outputValues);
 
 	// delete dpd after no longer needed
-	delete dpd;
+	//delete dpd;
 
 	return outputDP;
 }
 
-HistoDataPoint* ObjectMerger::merge(vector<HistoDataPoint*>& objectsToMerge,
-		string& outcomeMessage, unsigned int N_M, unsigned int N_m,
-		unsigned int N_u) {
-
-	// use DataPoint merge first
-	string dpOut;
-	vector<DataPoint*> initial;
-
-	for (unsigned int i = 0; i < objectsToMerge.size(); i++) {
-		DataPoint* current = dynamic_cast<DataPoint*> (objectsToMerge[i]);
-		initial.push_back(current);
-	}
-	DataPoint* mergedDP = ObjectMerger::merge(initial, dpOut);
-
-	// now fill the rest
-	HistoDataPoint* outputHDP = new HistoDataPoint(N_M, N_m, N_u);
-
-	outputHDP->setDefinition(mergedDP->getDefinition());
-	outputHDP->setData(mergedDP->getData());
-	outputHDP->setSource(mergedDP->getSource());
-
-	vector<unsigned int> uSt;
-	vector<unsigned int> mSt;
-	vector<unsigned int> MSt;
-	for (unsigned int i = 0; i < N_M; i++)
-		MSt.push_back(0);
-	for (unsigned int i = 0; i < N_m; i++)
-		mSt.push_back(0);
-	for (unsigned int i = 0; i < N_u; i++)
-		uSt.push_back(0);
-
-	// compose new mStates Histo
-	for (unsigned int i = 0; i < objectsToMerge.size(); i++) {
-		// iterate on the MState histo
-		for (unsigned int j = 0; j < objectsToMerge[i]->getMStates().size(); j++) {
-			MSt[j] += objectsToMerge[i]->getMStates()[j];
-		}
-		for (unsigned int j = 0; j < objectsToMerge[i]->getmStates().size(); j++) {
-			mSt[j] += objectsToMerge[i]->getmStates()[j];
-		}
-		for (unsigned int j = 0; j < objectsToMerge[i]->getuStates().size(); j++) {
-			uSt[j] += objectsToMerge[i]->getuStates()[j];
-		}
-	}
-
-	outputHDP->setMStates(MSt);
-	outputHDP->setmStates(mSt);
-	outputHDP->setuStates(uSt);
-
-	delete mergedDP;
-
-	return outputHDP;
-}
-
-HistoDataPoint* ObjectMerger::mergeHistosButKeepLatestCounters(vector<HistoDataPoint*> objectsToMerge,
-		string& outcomeMessage, unsigned int N_M, unsigned int N_m,
-		unsigned int N_u) {
-
-	// get last data point in array
-	DataPoint* lastDP = dynamic_cast<DataPoint*> (objectsToMerge[objectsToMerge.size() - 1]);
-
-	// now fill the rest
-	HistoDataPoint* outputHDP = new HistoDataPoint(N_M, N_m, N_u);
-
-	outputHDP->setDefinition(lastDP->getDefinition());
-	outputHDP->setData(lastDP->getData());
-	outputHDP->setSource(lastDP->getSource());
-
-	vector<unsigned int> uSt;
-	vector<unsigned int> mSt;
-	vector<unsigned int> MSt;
-	for (unsigned int i = 0; i < N_M; i++)
-		MSt.push_back(0);
-	for (unsigned int i = 0; i < N_m; i++)
-		mSt.push_back(0);
-	for (unsigned int i = 0; i < N_u; i++)
-		uSt.push_back(0);
-
-	// compose new mStates Histo
-	for (unsigned int i = 0; i < objectsToMerge.size(); i++) {
-		// iterate on the MState histo
-		for (unsigned int j = 0; j < objectsToMerge[i]->getMStates().size(); j++) {
-			MSt[j] += objectsToMerge[i]->getMStates()[j];
-		}
-		for (unsigned int j = 0; j < objectsToMerge[i]->getmStates().size(); j++) {
-			mSt[j] += objectsToMerge[i]->getmStates()[j];
-		}
-		for (unsigned int j = 0; j < objectsToMerge[i]->getuStates().size(); j++) {
-			uSt[j] += objectsToMerge[i]->getuStates()[j];
-		}
-	}
-
-	outputHDP->setMStates(MSt);
-	outputHDP->setmStates(mSt);
-	outputHDP->setuStates(uSt);
-
-	//delete lastDP;
-
-	return outputHDP;
-}
-
-DataPointDefinition* ObjectMerger::getDataPointDefinitionFor(string defFilePath) {
-	DataPointDefinition* dpd = new DataPointDefinition();
+bool ObjectMerger::getDataPointDefinitionFor(string defFilePath, DataPointDefinition& dpd) {
 	string dpdString;
 	bool readOK = FileIO::readStringFromFile(defFilePath, dpdString);
 	// data point definition is bad!
 	if (!readOK) {
 		cout << "Cannot read from JSON definition path: " << defFilePath
 				<< endl;
-		return dpd;
+		return false;
 	}
-	JSONSerializer::deserialize(dpd, dpdString);
-	return dpd;
+	JSONSerializer::deserialize(&dpd, dpdString);
+	return true;
+}
+
+DataPoint* ObjectMerger::csvToJson(string& olCSV, DataPointDefinition* dpd,
+		string defPath) {
+
+	DataPoint* dp = new DataPoint();
+	dp->setDefinition(defPath);
+
+	vector<string> tokens;
+	std::istringstream ss(olCSV);
+	while (!ss.eof()) {
+		string field;
+		getline(ss, field, ',');
+		tokens.push_back(field);
+	}
+
+	dp->resetData();
+
+	for (unsigned int i = 0; i < tokens.size(); i++) {
+		string currentOpName = dpd->getLegendFor(i).getOperation();
+		int index = atoi(tokens[i].c_str());
+		if (currentOpName.compare(Operations::HISTO) == 0) {
+			vector<int> histo;
+			Utils::bumpIndex(histo, index);
+			string histoStr;
+			Utils::intArrayToString(histo, histoStr);
+			dp->addToData(histoStr);
+		} else
+			dp->addToData(tokens[i]);
+	}
+
+	return dp;
 }
 
 string ObjectMerger::applyOperation(std::vector<string> dataVector,
@@ -217,16 +160,8 @@ string ObjectMerger::applyOperation(std::vector<string> dataVector,
 		opResultString = Operations::same(dataVector);
 	}
 
-	else if (operationName.compare(Operations::M_HISTO) == 0) {
-		opResultString = Operations::M_HISTO;
-	}
-
-	else if (operationName.compare(Operations::m_HISTO) == 0) {
-		opResultString = Operations::m_HISTO;
-	}
-
-	else if (operationName.compare(Operations::u_HISTO) == 0) {
-		opResultString = Operations::u_HISTO;
+	else if (operationName.compare(Operations::HISTO) == 0) {
+		opResultString = Operations::histo(dataVector);
 	}
 
 	// OPERATION WAS NOT DEFINED

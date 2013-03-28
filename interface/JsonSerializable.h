@@ -10,11 +10,12 @@
 
 #include "EventFilter/Utilities/src/json.h"
 
-namespace jsoncollector
-{
+namespace jsoncollector {
 class JsonSerializable {
 public:
-	virtual ~JsonSerializable() {};
+	virtual ~JsonSerializable() {
+	}
+	;
 	virtual void serialize(Json::Value& root) const = 0;
 	virtual void deserialize(Json::Value& root) = 0;
 };

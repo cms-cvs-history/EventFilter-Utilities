@@ -10,7 +10,6 @@
 
 #include <vector>
 #include "DataPoint.h"
-#include "HistoDataPoint.h"
 #include "DataPointDefinition.h"
 
 namespace jsoncollector {
@@ -19,29 +18,23 @@ class ObjectMerger {
 public:
 	/**
 	 * Merges the DataPoint objects in the vector by getting their definition and applying the required operations
+	 * If the onlyHistos arg is set to true, only histograms will be merged, will for other params the latest value
+	 * (@ objectsToMerge.size() - 1) will be taken
 	 */
 	static DataPoint* merge(std::vector<DataPoint*> objectsToMerge,
-			std::string& outcomeMessage);
-	/**
-	 * Merges the HistoDataPoint objects in the vector by getting their definition and applying the required operations
-	 */
-	static HistoDataPoint* merge(std::vector<HistoDataPoint*>& objectsToMerge,
-			std::string& outcomeMessage, unsigned int N_M, unsigned int N_m,
-			unsigned int N_u);
-	/**
-	 * TODO comment
-	 */
-	static HistoDataPoint* mergeHistosButKeepLatestCounters(
-			std::vector<HistoDataPoint*> objectsToMerge,
-			std::string& outcomeMessage, unsigned int N_M, unsigned int N_m,
-			unsigned int N_u);
+			std::string& outcomeMessage, bool onlyHistos);
 
 	/**
-	 * Returns a pointer to a new DataPointDefinition object loaded from the specified path
+	 * Loads DataPointDefinition into the specified reference
 	 */
-	// FIXME return void, no *new* object
-	static DataPointDefinition* getDataPointDefinitionFor(
-			std::string defFilePath);
+	static bool getDataPointDefinitionFor(std::string defFilePath,
+			DataPointDefinition& def);
+
+	/**
+	 * Transforms the CSV string into a DataPoint object using the definition
+	 */
+	static DataPoint* csvToJson(std::string& olCSV, DataPointDefinition* dpd,
+			std::string defPath);
 
 private:
 	static std::string applyOperation(std::vector<std::string> dataVector,

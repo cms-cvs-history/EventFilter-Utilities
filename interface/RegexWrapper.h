@@ -13,7 +13,6 @@
 #include <stdio.h>
 
 #define MAX_MATCHES 1 //The maximum number of matches allowed in a single string
-
 class RegexWrapper {
 
 public:

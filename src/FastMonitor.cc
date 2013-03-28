@@ -7,9 +7,9 @@
 
 #include "../interface/FastMonitor.h"
 #include "../interface/ObjectMerger.h"
-#include "../interface/JSONHistoCollector.h"
 #include "../interface/JSONSerializer.h"
 #include "../interface/FileIO.h"
+#include "../interface/Utils.h"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -21,93 +21,39 @@ using std::ofstream;
 using std::fstream;
 using std::endl;
 
-FastMonitor::FastMonitor(vector<JsonMonitorable*> monitorableVariables,
-		string defPath, string fastOutPath, string fullOutPath,
-		unsigned int N_M, unsigned int N_m, unsigned int N_u) :
-	snappedOnce_(false), monitorableVars_(monitorableVariables),
-			fastOutPath_(fastOutPath), fullOutPath_(fullOutPath), N_MACRO(N_M),
-			N_MINI(N_m), N_MICRO(N_u) {
+const string FastMonitor::OUTPUT_FILE_FORMAT = ".jsn";
 
-	dpd_ = ObjectMerger::getDataPointDefinitionFor(defPath);
-	if (dpd_->isPopulated()) {
-		for (unsigned int i = 0; i < dpd_->getLegend().size(); i++) {
-			string toBeMonitored = dpd_->getLegend()[i].getName();
+FastMonitor::FastMonitor(vector<JsonMonitorable*> monitorableVariables,
+		string defPath, string fastOutPath, string fullOutPath) :
+	snappedOnce_(false), monitorableVars_(monitorableVariables),
+			fastOutPath_(fastOutPath), fullOutPath_(fullOutPath),
+			defPath_(defPath) {
+
+	ObjectMerger::getDataPointDefinitionFor(defPath_, dpd_);
+	if (dpd_.isPopulated()) {
+		for (unsigned int i = 0; i < dpd_.getLegend().size(); i++) {
+			string toBeMonitored = dpd_.getLegend()[i].getName();
 			monitoredVars_.push_back(getVarForName(toBeMonitored));
 		}
-		/*
-		 ofstream outputFile;
-		 outputFile.open(fastOutPath_.c_str());
-		 outputFile << dpd_->getName() << endl;
-		 outputFile.close();
-		 */
 	}
 }
 
 FastMonitor::~FastMonitor() {
-	if (dpd_ != 0)
-		delete dpd_;
 }
-
-/*
- void FastMonitor::snap() {
- ofstream outputFile;
- std::stringstream ss;
- outputFile.open(fastOutPath_.c_str(), fstream::out | fstream::trunc);
- // FIXME not optimal
- outputFile << dpd_->getName() << endl;
- for (unsigned int i = 0; i < monitoredVars_.size(); i++) {
- if (i == monitoredVars_.size() - 1) {
- outputFile << monitoredVars_[i]->toString();
- ss << monitoredVars_[i]->toString();
- break;
- }
- outputFile << monitoredVars_[i]->toString() << ",";
- ss << monitoredVars_[i]->toString() << ",";
- }
- outputFile << endl;
- outputFile.close();
-
- string inputStringCSV = ss.str();
-
- HistoDataPoint* newHDP = new HistoDataPoint(N_MACRO, N_MINI, N_MICRO);
- JSONHistoCollector::onelineCSVToHisto(inputStringCSV, dpd_, newHDP, N_MACRO, N_MINI, N_MICRO);
-
- if (!snappedOnce_) {
- HistoDataPoint* deletable = hdp_;
- *hdp_ = *newHDP;
- delete newHDP;
- snappedOnce_ = true;
- }
-
- else {
- vector<HistoDataPoint*> histoDataPoints;
- histoDataPoints.push_back(hdp_);
- histoDataPoints.push_back(newHDP);
- string outcomeMessage;
- HistoDataPoint* mergedHDP = ObjectMerger::mergeHistosButKeepLatestCounters(histoDataPoints,
- outcomeMessage, N_MACRO, N_MINI, N_MICRO);
- *hdp_ = *mergedHDP;
-
- delete mergedHDP;
- }
- }
- */
 
 void FastMonitor::snap() {
 	ofstream outputFile;
 	std::stringstream ss;
 	outputFile.open(fastOutPath_.c_str(), fstream::out | fstream::trunc);
-	// FIXME not optimal
-	outputFile << dpd_->getName() << endl;
+	outputFile << defPath_ << endl;
 	for (unsigned int i = 0; i < monitoredVars_.size(); i++) {
 		if (i == monitoredVars_.size() - 1) {
-			outputFile << monitoredVars_[i]->toString();
 			ss << monitoredVars_[i]->toString();
 			break;
 		}
-		outputFile << monitoredVars_[i]->toString() << ",";
 		ss << monitoredVars_[i]->toString() << ",";
 	}
+	outputFile << ss.str();
 	outputFile << endl;
 	outputFile.close();
 
@@ -117,37 +63,39 @@ void FastMonitor::snap() {
 }
 
 void FastMonitor::outputFullHistoDataPoint(int outputFileSuffix) {
-
 	if (accumulatedCSV_.size() > 0) {
 
-		vector<HistoDataPoint*> hdpToMerge;
+		vector<DataPoint*> dpToMerge;
 
 		for (unsigned int i = 0; i < accumulatedCSV_.size(); i++) {
 			string currentCSV = accumulatedCSV_[i];
-			HistoDataPoint* currentHistoDP =
-					JSONHistoCollector::onelineCSVToHisto(currentCSV, dpd_,
-							N_MACRO, N_MINI, N_MICRO);
-			hdpToMerge.push_back(currentHistoDP);
+			DataPoint* currentDP = ObjectMerger::csvToJson(currentCSV, &dpd_,
+					defPath_);
+			string hpid;
+			Utils::getHostAndPID(hpid);
+			currentDP->setSource(hpid);
+			dpToMerge.push_back(currentDP);
 		}
 
 		string outputJSONAsString;
 		string msg;
 
-		HistoDataPoint* mergedHDP =
-				ObjectMerger::mergeHistosButKeepLatestCounters(hdpToMerge, msg,
-						N_MACRO, N_MINI, N_MICRO);
+		DataPoint* mergedDP = ObjectMerger::merge(dpToMerge, msg, true);
+		mergedDP->setSource(dpToMerge[0]->getSource());
 
-		for (unsigned int i = 0; i < hdpToMerge.size(); i++)
-			delete hdpToMerge[i];
+		for (unsigned int i = 0; i < dpToMerge.size(); i++)
+			delete dpToMerge[i];
 
-		JSONSerializer::serialize(mergedHDP, outputJSONAsString);
+		JSONSerializer::serialize(mergedDP, outputJSONAsString);
 		stringstream ss;
-		ss << fullOutPath_.substr(0, fullOutPath_.rfind(".")) << outputFileSuffix << ".jsh";
+		ss << fullOutPath_.substr(0, fullOutPath_.rfind(".")) << "_"
+				<< outputFileSuffix << OUTPUT_FILE_FORMAT;
 		string finalPath = ss.str();
 		FileIO::writeStringToFile(finalPath, outputJSONAsString);
 
 		accumulatedCSV_.clear();
 		snappedOnce_ = false;
+
 	}
 }
 
@@ -157,4 +105,3 @@ JsonMonitorable* FastMonitor::getVarForName(string name) const {
 			return monitorableVars_[i];
 	return 0;
 }
-

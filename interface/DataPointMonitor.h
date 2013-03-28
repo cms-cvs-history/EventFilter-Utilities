@@ -23,13 +23,8 @@ namespace jsoncollector {
 class DataPointMonitor {
 
 public:
-
-	DataPointMonitor(vector<JsonMonitorable*> monitorableVariables,
-			vector<string> toBeMonitored);
 	DataPointMonitor(vector<JsonMonitorable*> monitorableVariables,
 			string defPath);
-	DataPointMonitor(vector<JsonMonitorable*> monitorableVariables,
-			DataPointDefinition* def);
 	virtual ~DataPointMonitor();
 
 	void snap(DataPoint& outputDataPoint);
@@ -42,7 +37,8 @@ private:
 	vector<JsonMonitorable*> monitorableVars_;
 	vector<string> toBeMonitored_;
 	vector<JsonMonitorable*> monitoredVars_;
-	DataPointDefinition* dpd_;
+	DataPointDefinition dpd_;
+	string defPath_;
 
 };
 }

@@ -17,8 +17,12 @@ public:
 	LegendItem(std::string name, std::string operation);
 	virtual ~LegendItem();
 
-	std::string getName() const { return name_; }
-	std::string getOperation() const { return operation_; }
+	std::string getName() const {
+		return name_;
+	}
+	std::string getOperation() const {
+		return operation_;
+	}
 
 private:
 	std::string name_, operation_;

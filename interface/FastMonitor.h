@@ -10,7 +10,7 @@
 
 #include "JsonMonitorable.h"
 #include "DataPointDefinition.h"
-#include "HistoDataPoint.h"
+#include "DataPoint.h"
 
 namespace jsoncollector {
 
@@ -19,8 +19,7 @@ class FastMonitor {
 public:
 	FastMonitor(std::vector<JsonMonitorable*> monitorableVariables,
 			std::string defPath, std::string fastOutPath,
-			std::string fullOutPath, unsigned int N_M, unsigned int N_m,
-			unsigned int N_u);
+			std::string fullOutPath);
 	virtual ~FastMonitor();
 
 	// updates internal HistoDataPoint and prints one-line CSV
@@ -33,12 +32,14 @@ private:
 	JsonMonitorable* getVarForName(string name) const;
 
 	bool snappedOnce_;
-	DataPointDefinition* dpd_;
+	DataPointDefinition dpd_;
 	std::vector<JsonMonitorable*> monitorableVars_;
 	std::string fastOutPath_, fullOutPath_;
 	std::vector<JsonMonitorable*> monitoredVars_;
 	std::vector<string> accumulatedCSV_;
-	unsigned int N_MACRO, N_MINI, N_MICRO;
+	std::string defPath_;
+
+	static const std::string OUTPUT_FILE_FORMAT;
 };
 
 }

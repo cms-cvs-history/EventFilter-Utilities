@@ -10,10 +10,9 @@
 using namespace jsoncollector;
 using std::string;
 
-LegendItem::LegendItem(string name, string operation) : name_(name), operation_(operation) {
+LegendItem::LegendItem(string name, string operation) :
+	name_(name), operation_(operation) {
 }
 
-LegendItem::~LegendItem(){
+LegendItem::~LegendItem() {
 }
-
-

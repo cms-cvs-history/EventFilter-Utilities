@@ -6,7 +6,6 @@
  */
 
 #include "../interface/JSONFileCollector.h"
-#include "../interface/JSONHistoCollector.h"
 #include "../interface/FileIO.h"
 #include "../interface/Utils.h"
 #include <sys/time.h>
@@ -23,46 +22,33 @@ using std::stringstream;
 using std::cout;
 using std::endl;
 
+static const string VERSION = "0.5 - 22.03.2013";
+
 // FIXME handle wrong args
-// FIXME remove possibility of input files
 
 int main(int argc, char **argv) {
 	bool displayModeOn = false;
 	bool jsnSimpleMode = false;
-	bool jsnHistoMode = false;
 	bool fastCSVMode = false;
-	//bool fullCSVMode = false;
-	unsigned int M_bins = 10, m_bins = 10, u_bins = 10;
-	// FIXME
-	string THEDIR = "";
+
 	// the regex is defaulted to everything
 	string regex = ".*";
 	string outputFilePath;
 	vector<string> inputFilePaths;
 
-	if (argc < 5) {
-		cout
-				<< "Usage is [-jsn/-jsh/-fastcsv] [-nb 10 10 10] [-d] [-r <regex>] -o <outfile> -i <indir1> <indir2>...<infileN>\n";
+	if (argc < 6) {
+		cout << VERSION
+				<< "   Usage is [-json/-csv] [-d] [-r <regex>] -o <outfile> -i <indir1> <indir2>...<infileN>"
+				<< endl;
 		exit(0);
 	} else { // if we got enough parameters...
 		for (int i = 1; i < argc; i++) {
 			if (i + 1 != argc) {
-				if (Utils::matchExactly(argv[i], "-jsn"))
+				if (Utils::matchExactly(argv[i], "-json"))
 					jsnSimpleMode = true;
-				else if (Utils::matchExactly(argv[i], "-jsh"))
-					jsnHistoMode = true;
-				else if (Utils::matchExactly(argv[i], "-fastcsv"))
+				else if (Utils::matchExactly(argv[i], "-csv"))
 					fastCSVMode = true;
-				/*
-				 else if (Utils::matchExactly(argv[i], "-fullcsv"))
-				 fullCSVMode = true;
-				 */
-				// display mode is on
-				else if (Utils::matchExactly(argv[i], "-nb")) {
-					M_bins = atoi(argv[i + 1]);
-					m_bins = atoi(argv[i + 2]);
-					u_bins = atoi(argv[i + 3]);
-				}
+
 				// display mode is on
 				else if (Utils::matchExactly(argv[i], "-d")) {
 					displayModeOn = true;
@@ -82,13 +68,10 @@ int main(int argc, char **argv) {
 						// check if argument is file or folder
 						string currentArg = argv[j];
 						if (FileIO::isDir(currentArg)) {
-							THEDIR = currentArg;
 							string dirLoadOutcome = "OK";
 
 							string inputFormat = ".jsn";
-							if (jsnHistoMode)
-								inputFormat = ".jsh";
-							else if (fastCSVMode/* || fullCSVMode*/)
+							if (fastCSVMode)
 								inputFormat = ".fast";
 
 							FileIO::getFileList(currentArg, inputFilePaths,
@@ -124,21 +107,14 @@ int main(int argc, char **argv) {
 
 	gettimeofday(&start, NULL);
 	if (jsnSimpleMode)
-		outcome = JSONFileCollector::mergeFiles(inputFilePaths, outputFilePath,
-				displayModeOn);
-	else if (jsnHistoMode)
-		outcome = JSONHistoCollector::mergeHistoFiles(THEDIR, outputFilePath,
-				M_bins, m_bins, u_bins);
+		outcome = JSONFileCollector::mergeJSONFiles(inputFilePaths,
+				outputFilePath, displayModeOn);
 	else if (fastCSVMode)
-		outcome = JSONHistoCollector::fastHistoMerge(THEDIR, outputFilePath,
-				M_bins, m_bins, u_bins);
-	/*
-	 else if (fullCSVMode)
-	 outcome = JSONHistoCollector::fullHistoMerge(THEDIR, outputFilePath,
-	 50, 50, 50);
-	 */
+		outcome = JSONFileCollector::mergeFastFiles(inputFilePaths,
+				outputFilePath, displayModeOn);
 	else
 		cout << "FAIL!!" << endl;
+
 	gettimeofday(&finish, NULL);
 
 	// compute and print the elapsed time in ms
@@ -146,9 +122,9 @@ int main(int argc, char **argv) {
 	elapsedTime += (finish.tv_usec - start.tv_usec) / 1000.0; // us to ms
 
 	if (outcome == EXIT_SUCCESS) {
-		cout << inputFilePaths.size()
-				<< " JSONCOLLECTOR: Files merged successfully!" << endl;
-		cout << " ---> total time (ms): " << elapsedTime << endl;
+		cout << "JSONCOLLECTOR: " << inputFilePaths.size()
+				<< " files merged successfully!" << endl;
+		cout << " >>> time (ms): " << elapsedTime << endl;
 	}
 
 	return outcome;

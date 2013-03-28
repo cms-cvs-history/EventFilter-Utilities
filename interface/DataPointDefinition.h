@@ -18,7 +18,7 @@ class DataPointDefinition: public JsonSerializable {
 
 public:
 	DataPointDefinition();
-	DataPointDefinition(std::string name, std::vector<LegendItem> legend);
+	DataPointDefinition(std::vector<LegendItem> legend);
 	virtual ~DataPointDefinition();
 
 	/**
@@ -37,21 +37,18 @@ public:
 	 * Returns a LegendItem object at the specified index
 	 */
 	LegendItem getLegendFor(unsigned int index) const;
-	std::string getName() const { return name_; }
-	std::vector<LegendItem> getLegend() const { return legend_; }
+	std::vector<LegendItem> getLegend() const {
+		return legend_;
+	}
 
 	// JSON field names
-	static const std::string FILE;
 	static const std::string LEGEND;
 	static const std::string PARAM_NAME;
 	static const std::string OPERATION;
 
 private:
-	std::string name_;
 	std::vector<LegendItem> legend_;
 };
 }
-
-
 
 #endif /* DATAPOINTDEFINITION_H_ */
