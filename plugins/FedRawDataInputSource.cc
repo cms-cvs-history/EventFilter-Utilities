@@ -609,9 +609,6 @@ void FedRawDataInputSource::createWorkingDirectory() {
   workingDirectory_ /= "hlt";
   if (!foundHLTdir) {
     boost::filesystem::create_directories(workingDirectory_);
-    // MARK! TODO remove
-    //std::cout << "sleeping for 2 sec ------> THIS HAS TO BE REMOVED!" << std::endl;
-    //sleep(2);
   }
 
   for ( boost::filesystem::directory_iterator it(workingDirectory_);
