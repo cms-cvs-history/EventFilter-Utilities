@@ -23,6 +23,8 @@ namespace evf{
     , dirManager_(base_dir_)
     , slaveResources_(pset.getUntrackedParameter<std::vector<std::string>>("slaveResources", std::vector<std::string>()))
     , slavePathToData_(pset.getUntrackedParameter<std::string>("slavePathToData","/data"))
+    , bu_w_monitor_stream(0)
+    , bu_t_monitor_stream(0)
   {
     reg.watchPreBeginRun(this,&EvFDaqDirector::preBeginRun);  
     reg.watchPostEndRun(this,&EvFDaqDirector::postEndRun);  
@@ -217,7 +219,8 @@ namespace evf{
     int retval = remove(filename.c_str());
     if(retval != 0) std::cout << "Could not remove used file " << filename << " error "
 			      << strerror(errno) << "\n";
-
+    // TODO remove
+    printf("OPEN bu_t_monitor_stream\n");
   }
 
   void EvFDaqDirector::removeFile(unsigned int ls){

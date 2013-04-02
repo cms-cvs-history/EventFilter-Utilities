@@ -80,11 +80,11 @@ namespace evf{
       FILE * fu_rw_lock_stream;
       DirManager dirManager_;
 
-      FILE * bu_w_monitor_stream;
-      FILE * bu_t_monitor_stream;
-
       std::vector<std::string> slaveResources_;
       std::string slavePathToData_;
+
+      FILE * bu_w_monitor_stream;
+      FILE * bu_t_monitor_stream;
   };
 }
 
