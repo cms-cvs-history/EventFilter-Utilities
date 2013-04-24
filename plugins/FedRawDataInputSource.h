@@ -10,10 +10,13 @@
 #include "FWCore/Sources/interface/RawInputSource.h"
 #include "FWCore/Framework/interface/EventPrincipal.h"
 #include "FWCore/Sources/interface/DaqProvenanceHelper.h"
+#include "FWCore/ServiceRegistry/interface/Service.h"
 
 #include "../interface/JsonMonitorable.h"
 #include "../interface/DataPointMonitor.h"
 #include "../interface/JSONSerializer.h"
+
+#include "EvFDaqDirector.h"
 
 using namespace jsoncollector;
 
@@ -45,7 +48,7 @@ private:
   void openFile(boost::filesystem::path const&);
   bool searchForNextFile(boost::filesystem::path const&);
   //bool grabNextFile(boost::filesystem::path const&,boost::filesystem::path const&);
-  bool grabNextFile(std::vector<boost::filesystem::path>&,boost::filesystem::path const&,std::vector<boost::filesystem::path>&);
+  bool grabNextFile(boost::filesystem::path&, boost::filesystem::path const&);
   bool eofReached() const;
   bool runEnded() const;
 
@@ -71,7 +74,6 @@ private:
   int lastOpenedLumi_;
   boost::filesystem::path currentDataDir_;
   bool eorFileSeen_;
-
 };
 
 #endif // EventFilter_Utilities_FedRawDataInputSource_h

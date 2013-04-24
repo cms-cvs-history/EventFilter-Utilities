@@ -87,6 +87,7 @@ FedRawDataInputSource::findRunDir(const std::string& rootFUDirectory)
   // get the corresponding BU dir
   buRunDirectory_ /= localRunDirectory_.filename();
 
+  /*
   if (boost::filesystem::exists(buRunDirectory_)) {
 	  //find "bu" subdir and take files from there, if present
 	  for ( boost::filesystem::directory_iterator it(buRunDirectory_);it != itEnd; ++it)
@@ -102,6 +103,7 @@ FedRawDataInputSource::findRunDir(const std::string& rootFUDirectory)
   {
 	  std::cout << "BU INPUT DIRECTORY DOES NOT EXIST @: " << buRunDirectory_.string() << std::endl;
   }
+  */
 
   edm::LogInfo("FedRawDataInputSource") << "Getting data from " << buRunDirectory_.string();
 
@@ -110,6 +112,7 @@ FedRawDataInputSource::findRunDir(const std::string& rootFUDirectory)
 bool FedRawDataInputSource::checkNextEvent()
 {
 
+  //std::cout << ">>>>>>>>>>>>>>>> Checking next event" << std::endl;
   struct
   {
     uint32_t version;
@@ -122,8 +125,8 @@ bool FedRawDataInputSource::checkNextEvent()
   {
     // run has ended
     resetLuminosityBlockAuxiliary();//todo:way to notify of run end?
-    if (workDirCreated_)
-      boost::filesystem::remove(workingDirectory_);
+    //if (workDirCreated_)
+    //  boost::filesystem::remove(workingDirectory_);
     return false;
   }
 
@@ -131,7 +134,8 @@ bool FedRawDataInputSource::checkNextEvent()
   if (!newLumiSection_)
   {
     fread((void*)&eventHeader, sizeof(uint32_t), 4, fileStream_);
-    assert( eventHeader.version == 2 );
+    // FIXME: fails with real BU
+    //assert( eventHeader.version == 2 );
 
     //get new lumi from file header
     if(!luminosityBlockAuxiliary() || luminosityBlockAuxiliary()->luminosityBlock() != eventHeader.lumiSection)
@@ -147,6 +151,7 @@ bool FedRawDataInputSource::checkNextEvent()
     }
     eventID_ = edm::EventID(eventHeader.runNumber, eventHeader.lumiSection, eventHeader.eventNumber);
     lastOpenedLumi_=eventHeader.lumiSection;
+    //std::cout << ">>>>>>>>>>>>>>>> Set event cached" << std::endl;
     setEventCached();
   }
   else
@@ -173,6 +178,7 @@ bool FedRawDataInputSource::checkNextEvent()
 edm::EventPrincipal*
 FedRawDataInputSource::read(edm::EventPrincipal& eventPrincipal)
 {
+  //std::cout << ">>>>>>>>>>>>>>>> Reading next event" << std::endl;
   std::auto_ptr<FEDRawDataCollection> rawData(new FEDRawDataCollection);
   edm::Timestamp tstamp = fillFEDRawDataCollection(rawData);
 
@@ -205,7 +211,9 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
   edm::Timestamp tstamp;
   size_t totalEventSize = 0;
   uint32_t fedSizes[1024];
+  //std::cout << ">>>>>>>>>>>>>>>> FREAD from file stream" << std::endl;
   fread((void*)fedSizes, sizeof(uint32_t), 1024, fileStream_);
+  //std::cout << ">>>>>>>>>>>>>>>> OK" << std::endl;
   for (unsigned int i=0;i<1024;i++) {
     totalEventSize += fedSizes[i];
   }
@@ -215,7 +223,9 @@ FedRawDataInputSource::fillFEDRawDataCollection(std::auto_ptr<FEDRawDataCollecti
     evf::evtn::evm_board_setformat(gtpevmsize);
   
   char* event = new char[totalEventSize];
+  //std::cout << ">>>>>>>>>>>>>>>> FREAD totalEventSize from file stream" << std::endl;
   fread((void*)event, totalEventSize, 1, fileStream_);
+  //std::cout << ">>>>>>>>>>>>>>>> OK" << std::endl;
   
   while ( totalEventSize>0 )
   {
@@ -249,21 +259,18 @@ FedRawDataInputSource::openNextFile()
   std::ostringstream fileName;
   char thishost[256];
   gethostname(thishost,255);
-  fileName << std::setfill('0') << std::setw(16) << fileIndex_++ << "_" << thishost << "_" << getpid() << ".rawg";
+  fileName << std::setfill('0') << std::setw(16) << fileIndex_++ << "_" << thishost << "_" << getpid() << ".raw";
   nextFile /= fileName.str();
 
-  // write previous json
-  /*
-  boost::filesystem::path jsonFile = workingDirectory_;
-  std::ostringstream fileNameJson;
-  fileNameJson << std::setfill('0') << std::setw(16) << fileIndex_ << ".json";
-  jsonFile /= fileNameJson.str();
-  */
-
   openFile(nextFile);//closes previous file
-  searchForNextFile(nextFile);
 
-  return ( fileStream_ != 0 || newLumiSection_ );
+
+  while(!searchForNextFile(nextFile) && !eorFileSeen_) {
+	  std::cout << "No file for me... sleep and try again..." << std::endl;
+	  usleep(250000);
+  }
+
+  return ( fileStream_ != 0 || !eorFileSeen_);
 }
 
 
@@ -287,219 +294,52 @@ FedRawDataInputSource::openFile(boost::filesystem::path const& nextFile)
 }
 
 bool
-FedRawDataInputSource::searchForNextFile(boost::filesystem::path const& nextFile)
-{
-	newLumiSection_=false;
-	std::vector<boost::filesystem::path> files;
-	std::vector<boost::filesystem::path> badFiles;
-	boost::filesystem::directory_iterator itEnd;
+FedRawDataInputSource::searchForNextFile(
+		boost::filesystem::path const& nextFile) {
+	newLumiSection_ = false;
+	bool fileIsOKToGrab = false;
+	std::stringstream ss;
+	unsigned int ls, index;
 
-	do
-	{
-		try {
-			currentDataDir_ = buRunDirectory_;
-			files.clear();
-			for ( boost::filesystem::directory_iterator it(currentDataDir_.string());
-					it != itEnd; ++it)
-			{
-				if ( it->path().extension() == ".raw")
-				{
-					bool fileIsBad = false;
-					for (unsigned int i = 0; i < badFiles.size(); i++)
-					{
-						std::cout << "Comparing against bad file list: " << badFiles[i].string() << " / " << it->path().string() << std::endl;
-						if ((it->path() == badFiles[i]))
-						{
-							std::cout << "FILE IS BAD = true" <<std::endl;
-							fileIsBad = true;
-							break;
-						}
-					}
-					if (fileIsBad)
-						std::cout << "Ignoring bad file =" << it->path().string() << std::endl;
-					else
-						files.push_back(*it);
-				}
-				else if ( it->path().extension() == ".eor")
-				{
-					std::cout << "EOR file seen!" << std::endl;
-					eorFileSeen_ = true;
-				}
-			}
-			if (files.size() > 0)
-			{
-				std::cout << "grabbin next file" <<std::endl;
-				if (grabNextFile(files,nextFile,badFiles))
-				{
-					badFiles.clear();
-					return true;
-				}
-			}
-			else if (!eorFileSeen_){
-				std::cout << "NOTHING TO GRAB! ... retrying ..." << std::endl;
-			}
-			else {
-				std::cout << "EOR file seen, and no more raw files to grab... BYE BYE! (exit 0)" << std::endl;
-				exit(0);
-			}
+	std::cout << "Asking for next file... to the DaqDirector" << std::endl;
+	fileIsOKToGrab = edm::Service<evf::EvFDaqDirector>()->updateFuLock(ls,
+			index, eorFileSeen_);
 
-			//loop again
-			usleep(300000);
-		}
-
-		catch(std::exception e) {
-			// Input dir gone?
-			std::cout << "std::exception caught: " << e.what() << std::endl;
-			std::cout << "Maybe the BU run dir disappeared? Ending process with code 0..." << std::endl;
+	if (fileIsOKToGrab) {
+		ss << buRunDirectory_.string() << "/ls" << std::setfill('0')
+				<< std::setw(4) << ls << "_" << std::setfill('0') << std::setw(
+				6) << index << ".raw";
+		string path = ss.str();
+		std::cout << "The director says to grab: " << path << std::endl;
+		std::cout << "grabbin next file" << std::endl;
+		boost::filesystem::path theFileToGrab(ss.str());
+		if (grabNextFile(theFileToGrab, nextFile)) {
+			return true;
+		} else {
+			std::cout << "GRABBING SHOULD NEVER FAIL! THE HORROOOOOOOOOOOOOOR!" << std::endl;
+			//return false;
 			exit(0);
 		}
+	} else {
+		std::cout << "The DAQ Director has nothing for me! " << std::endl;
+		if (eorFileSeen_) {
+			std::cout << "...and he's seen the end of run file!" << std::endl;
+		}
+		return false;
 	}
-	while (1/*!edm::shutdown_flag*/);
-
-	return true;
 }
 
 bool
-FedRawDataInputSource::grabNextFile(std::vector<boost::filesystem::path>& files,boost::filesystem::path const& nextFile, std::vector<boost::filesystem::path>& badFiles)
+FedRawDataInputSource::grabNextFile(boost::filesystem::path& file, boost::filesystem::path const& nextFile)
 {
 	try
 	{
-		std::sort(files.begin(), files.end());
-		std::cout << " rename " << files.front() << " to " << nextFile << std::endl;
-
-		//RENAME
-		std::cout << "0. RENAME @ BU " << files.front().string()  << " to " << nextFile << std::endl;
-		int rc = rename(files.front().string().c_str(), nextFile.string().c_str());
+		// TODO remove this rename business
+		/*
+		std::cout << "0. RENAME @ BU " << file.string()  << " to " << nextFile << std::endl;
+		int rc = rename(file.string().c_str(), nextFile.string().c_str());
 		if (rc != 0) {
-			std::cout << "BAD FILE FOUND!!!!!! " << files.front().string() << std::endl;
-			badFiles.push_back(files.front());
 			throw std::runtime_error("Cannot RENAME DATA file, rc is != 0!");
-		}
-
-
-		// FIXME DOESN'T WORK OVER NFS!!!!!!
-		//boost::filesystem::rename(files.front(), nextFile);
-
-		//GET FD
-		/*
-		std::cout << "1. Opening file to get FD = " << files.front().string() << std::endl;
-		int fd = open(files.front().string().c_str(), O_WRONLY);
-		if (fd == -1) {
-			badFiles.push_back(files.front());
-			throw std::runtime_error("Cannot open DATA file, FD = -1!");
-		}
-
-		//LOCK
-		std::cout << "2. Locking NONBLOCKING file = " << files.front().string() << std::endl;
-		int result = flock(fd, LOCK_EX | LOCK_NB);
-		if (result == -1) {
-			badFiles.push_back(files.front());
-			throw std::runtime_error("Cannot lock DATA file, flock result is = -1!");
-		}
-
-		//MOVE
-		std::cout << "3. MOVE TO FU. From " << files.front().string()  << " to " << nextFile.string() << std::endl;
-		string mvCmd = "mv " + files.front().string() + " " + nextFile.string();
-		std::cout << " Running move cmd = " << mvCmd << std::endl;
-		int rc = system(mvCmd.c_str());
-		std::cout << " return code = " << rc << std::endl;
-		if (rc != 0) {
-			//badFiles.push_back(files.front());
-			//throw std::runtime_error("Cannot move DATA file, rc is != 0! THIS SHOULD NEVER HAPPEN! Exiting...");
-			std::cout << "MOVE TO FU FAILED! THIS SHOULD NEVER HAPPEN IF LOCKING WORKS! EXITING..." << std::endl;
-			exit(-1);
-		}
-
-		//to avoid .nfs leftover files
-		close(fd);
-		*/
-
-		// LOCK USING FCNTL
-
-		//struct flock fl;
-		//int fd;
-
-		//fl.l_type   = F_WRLCK;  /* F_RDLCK, F_WRLCK, F_UNLCK    */
-		//fl.l_whence = SEEK_SET; /* SEEK_SET, SEEK_CUR, SEEK_END */
-		//fl.l_start  = 0;        /* Offset from l_whence         */
-		//fl.l_len    = 0;        /* length, 0 = to EOF           */
-		//fl.l_pid    = getpid(); /* our PID                      */
-		/*
-    
-		fd = open(files.front().string().c_str(), O_WRONLY);
-		std::cout << "0. FD is =   " << fd << std::endl;
-
-		std::cout << "1. LOCK  " << files.front().string() << std::endl;
-		int rc = fcntl(fd, F_SETLK, &fl);  // F_GETLK, F_SETLK, F_SETLKW
-		if (errno == EAGAIN) std::cout << "EAGAIN"<< std::endl;
-		if (errno == EACCES) std::cout << "EACCESS"<< std::endl;
-		if (errno == EBADF) std::cout << "EBADF"<< std::endl;
-		if (errno == EDEADLK) std::cout << "EDEADLK"<< std::endl;
-		if (errno == EFAULT) std::cout << "EFAULT"<< std::endl;
-		if (errno == EINTR) std::cout << "EINTR"<< std::endl;
-		if (errno == EINVAL) std::cout << "EINVAL"<< std::endl;
-		if (errno == EMFILE) std::cout << "EMFILE"<< std::endl;
-		if (errno == ENOLOCCK) std::cout << "ENLOCK"<< std::endl;
-		if (errno == EPERM) std::cout << "EPERM"<< std::endl;
-		if (rc == -1) {
-			badFiles.push_back(files.front());
-			throw std::runtime_error("Cannot LOCK data file, rc is != 0!");
-		}
-		*/
-
-		//std::cout << "Sleeping for 1 MINUTE!!!" << std::endl;
-		//::sleep(60);
-
-		// OPEN
-		/*
-		 std::cout << "3. TRY TO OPEN  " << files.front().string() << std::endl;
-		 std::ifstream grabbedFile(files.front().string());
-		 if (grabbedFile.is_open()) {
-		 grabbedFile.close();
-		 }
-		 else {
-		 // the file was not really grabbed...
-		 badFiles.push_back(files.front());
-		 throw std::runtime_error("Cannot OPEN data file file! This should never happed!!");
-		 exit(-1);
-		 }
-		 */
-
-		//COPY
-		/*
-		 std::cout << "4. COPY TO FU. From " << files.front().string()  << " to " << nextFile.string() << std::endl;
-		 string copyCmd = "cp " + files.front().string() + " " + nextFile.string();
-		 std::cout << " Running copy cmd = " << copyCmd << std::endl;
-		int rc = system(copyCmd.c_str());
-		std::cout << " return code = " << rc << std::endl;
-		if (rc != 0) {
-			badFiles.push_back(files.front());
-			throw std::runtime_error("Cannot copy DATA file, rc is != 0!");
-		}
-		*/
-
-		//UNLOCK
-		/*
-		std::cout << "6. UNLOCKING file = " << files.front().string() << std::endl;
-		result = flock(fd, LOCK_UN);
-		if (result == -1) {
-			badFiles.push_back(files.front());
-			throw std::runtime_error("Cannot UNLOCK DATA file, flock result is = -1!");
-		}
-		*/
-
-		// REMOVE FROM BU
-		/*
-		string rmCmd = "rm " + renamed;
-		std::cout << "7.  REMOVE FROM BU = " << rmCmd << std::endl;
-		rc = system(rmCmd.c_str());
-		std::cout << " return code = " << rc << std::endl;
-		if (rc != 0) {
-			badFiles.push_back(files.front());
-			// ALSO NEED TO REMOVE COPIED FILE (FU)
-			string rmInitialFileCmd = "rm " + nextFile.string();
-			system(rmInitialFileCmd.c_str());
-			throw std::runtime_error("Cannot REMOVE DATA file, rc is != 0!");
 		}
 		*/
 
@@ -508,7 +348,7 @@ FedRawDataInputSource::grabNextFile(std::vector<boost::filesystem::path>& files,
 		boost::filesystem::path nextFileJson = workingDirectory_;
 		//std::ostringstream fileName;
 		//nextFile /= fileName.str();
-		boost::filesystem::path jsonSourcePath(files.front());
+		boost::filesystem::path jsonSourcePath(file);
 		boost::filesystem::path jsonDestPath(nextFileJson);
 		boost::filesystem::path jsonExt(".jsn");
 		jsonSourcePath.replace_extension(jsonExt);
@@ -527,13 +367,15 @@ FedRawDataInputSource::grabNextFile(std::vector<boost::filesystem::path>& files,
 		//move JSON
 		string mvCmd = "mv " + jsonSourcePath.string() + " " + jsonTempPath.string();
 		std::cout << " Running copy cmd = " << mvCmd << std::endl;
-		rc = system(mvCmd.c_str());
+		int rc = system(mvCmd.c_str());
 		std::cout << " return code = " << rc << std::endl;
 		if (rc != 0) {
 			throw std::runtime_error("Cannot copy JSON file, rc is != 0!");
 		}
 
-		openFile(nextFile);
+		//openFile(nextFile);
+		openFile(file);
+
 		return true;
 	}
 
